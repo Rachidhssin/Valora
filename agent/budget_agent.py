@@ -122,7 +122,8 @@ Be concise and practical. Focus on actionable solutions."""
                                        product: Dict[str, Any],
                                        user_afig: Dict[str, Any],
                                        current_cart: List[Dict],
-                                       budget: float) -> Dict[str, Any]:
+                                       budget: float,
+                                       skip_llm: bool = False) -> Dict[str, Any]:
         """
         Find ways to make a product affordable.
         
@@ -161,7 +162,7 @@ Be concise and practical. Focus on actionable solutions."""
         }
         
         # Run agent loop
-        if self._client:
+        if self._client and not skip_llm:
             result = await self._run_llm_agent(context, current_cart)
         else:
             # Fallback to rule-based agent

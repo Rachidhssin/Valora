@@ -102,15 +102,15 @@ class QdrantSearch:
             # Build Qdrant filter if provided
             qdrant_filter = self._build_filter(filters) if filters else None
             
-            results = self._client.search(
+            results = self._client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_vector,
+                query=query_vector,
                 query_filter=qdrant_filter,
                 limit=limit,
                 with_payload=True
             )
             
-            return [self._to_search_result(r) for r in results]
+            return [self._to_search_result(r) for r in results.points]
             
         except Exception as e:
             print(f"⚠️ Search error: {e}")
@@ -290,7 +290,6 @@ class QdrantSearch:
             return {
                 "name": self.collection_name,
                 "points_count": info.points_count,
-                "vectors_count": info.vectors_count,
                 "status": info.status.value
             }
         except Exception as e:

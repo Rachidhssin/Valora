@@ -32,6 +32,7 @@ class SearchRequest(BaseModel):
     budget: float = Field(..., ge=10, le=50000)
     user_id: str = Field(default="anonymous")
     cart: List[Dict[str, Any]] = Field(default_factory=list)
+    skip_explanations: bool = Field(default=True, description="Skip slow LLM explanations for faster response")
 
 
 class SearchResponse(BaseModel):
@@ -157,7 +158,8 @@ async def search(request: SearchRequest):
             query=request.query,
             user_id=request.user_id,
             budget=request.budget,
-            cart=request.cart
+            cart=request.cart,
+            skip_explanations=request.skip_explanations
         )
         
         # Log to metrics

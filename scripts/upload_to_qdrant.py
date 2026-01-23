@@ -112,7 +112,6 @@ def upload_to_qdrant():
     print(f"\n✅ Upload complete!")
     print(f"📊 Collection stats:")
     print(f"   Points: {collection_info.points_count}")
-    print(f"   Vectors: {collection_info.vectors_count}")
 
 
 if __name__ == "__main__":

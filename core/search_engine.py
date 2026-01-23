@@ -60,7 +60,8 @@ class FinBundleEngine:
         self._precomputed = {}
     
     async def search(self, query: str, user_id: str, 
-                    budget: float, cart: List[Dict] = None) -> Dict[str, Any]:
+                    budget: float, cart: List[Dict] = None, 
+                    skip_explanations: bool = False) -> Dict[str, Any]:
         """
         Main search entry point.
         
@@ -96,7 +97,7 @@ class FinBundleEngine:
         elif path == "smart":
             result = await self._smart_path(query, budget, afig_context)
         else:  # deep
-            result = await self._deep_path(query, budget, afig_context, user_id, cart)
+            result = await self._deep_path(query, budget, afig_context, user_id, cart, skip_explanations)
         
         # Add metrics
         total_latency = (time.time() - start_time) * 1000
@@ -240,7 +241,7 @@ class FinBundleEngine:
     
     async def _deep_path(self, query: str, budget: float,
                         afig_context: Dict, user_id: str,
-                        cart: List[Dict]) -> Dict[str, Any]:
+                        cart: List[Dict], skip_explanations: bool = False) -> Dict[str, Any]:
         """
         Deep path with full optimization and agent.
         Target: <1500ms
@@ -302,7 +303,8 @@ class FinBundleEngine:
                 product=bundle_product,
                 user_afig=afig_context,
                 current_cart=cart,
-                budget=budget
+                budget=budget,
+                skip_llm=skip_explanations
             )
             
             result['agent_latency_ms'] = round((time.time() - agent_start) * 1000, 2)
@@ -322,7 +324,7 @@ class FinBundleEngine:
                 'category': item.category,
                 'rating': 4.5  # Default if not available
             }
-            exp = await self.explainer.explain(product_dict, afig_context)
+            exp = await self.explainer.explain(product_dict, afig_context) if not skip_explanations else "Great choice for your setup."
             explanations.append({
                 'product_id': item.id,
                 'explanation': exp
@@ -333,11 +335,14 @@ class FinBundleEngine:
         
         # Bundle explanation
         if bundle_result.bundle:
-            result['bundle_explanation'] = self.explainer.explain_bundle(
-                bundle_result.bundle,
-                bundle_result.total_price,
-                afig_context
-            )
+            if not skip_explanations:
+                result['bundle_explanation'] = self.explainer.explain_bundle(
+                    bundle_result.bundle,
+                    bundle_result.total_price,
+                    afig_context
+                )
+            else:
+                 result['bundle_explanation'] = "Optimized bundle fitting your budget."
         
         return result
     
@@ -350,8 +355,10 @@ class FinBundleEngine:
                 'product_id': f'popular_{category}_{i}',
                 'name': f'Popular {category.title()} #{i+1}',
                 'category': category,
+                'brand': 'TopBrand',
                 'price': 100 + i * 50,
                 'rating': 4.5 - i * 0.1,
+                'utility': 0.8,
                 'source': 'precomputed'
             }
             for i in range(min(limit, 5))

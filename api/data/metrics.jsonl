@@ -1,1 +1,18 @@
 {"timestamp": "2026-01-22T22:25:35.417881", "type": "search", "query": "laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 4072.59, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-23T11:01:26.293788", "type": "search", "query": "ProBook", "user_id": "demo_user", "path": "smart", "latency_ms": 15184.82, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-23T11:08:37.532635", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 4109.27, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-23T11:13:37.013143", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 4087.92, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-23T11:21:06.543786", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 4092.86, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-23T11:25:04.530457", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 4081.19, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-23T11:28:21.810776", "type": "search", "query": "laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 4084.37, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-23T11:34:52.571200", "type": "search", "query": "laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 4083.61, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-23T11:35:13.250616", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 4090.87, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-23T11:38:00.221110", "type": "search", "query": "laptop", "user_id": "test_user", "path": "fast", "latency_ms": 4054.52, "cache_hit": true, "result_count": 5}
+{"timestamp": "2026-01-23T11:41:09.057347", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 4090.0, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-23T11:42:35.397815", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 4088.66, "cache_hit": true, "result_count": 5}
+{"timestamp": "2026-01-23T11:45:12.381159", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 4106.04, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-23T11:46:37.457700", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 4107.14, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-23T11:47:08.651524", "type": "search", "query": "Budget keyboard", "user_id": "demo_user", "path": "fast", "latency_ms": 4073.98, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-23T11:47:32.467048", "type": "search", "query": "4K monitor", "user_id": "demo_user", "path": "fast", "latency_ms": 4080.09, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-23T11:48:23.138748", "type": "search", "query": "recommend me some cool mouses", "user_id": "demo_user", "path": "smart", "latency_ms": 17336.49, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-23T11:48:42.544707", "type": "search", "query": "recommend me some cool keyboard", "user_id": "demo_user", "path": "smart", "latency_ms": 4399.86, "cache_hit": false, "result_count": 0}

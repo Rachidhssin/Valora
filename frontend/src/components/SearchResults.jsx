@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Package, Zap, Brain, Target, Sparkles, ShoppingCart, Clock, AlertCircle } from 'lucide-react'
 import { useStore } from '../store/useStore'
@@ -6,9 +7,12 @@ export default function SearchResults({ result }) {
     const { setLastMetrics } = useStore()
 
     // Store metrics
-    if (result.metrics) {
-        setLastMetrics(result.metrics)
-    }
+    // Store metrics
+    useEffect(() => {
+        if (result?.metrics) {
+            setLastMetrics(result.metrics)
+        }
+    }, [result, setLastMetrics])
 
     const path = result.path
     const metrics = result.metrics || {}
@@ -186,7 +190,7 @@ function ProductGrid({ products = [] }) {
                 >
                     <h3 className="font-semibold text-white truncate">{product.name}</h3>
                     <p className="text-sm text-white/50">
-                        {product.category} • {product.brand}
+                        {product.category} • {product.brand || 'Generic'}
                     </p>
 
                     <div className="flex items-center justify-between mt-3">
@@ -194,7 +198,7 @@ function ProductGrid({ products = [] }) {
                             <span className="text-lg font-bold text-primary-400">${product.price}</span>
                             <div className="flex items-center gap-2 text-sm text-white/60">
                                 <span>⭐ {product.rating}/5</span>
-                                {product.utility > 0 && (
+                                {(product.utility !== undefined && product.utility > 0) && (
                                     <span className="text-xs px-1.5 py-0.5 bg-white/10 rounded">
                                         Score: {product.utility?.toFixed(2)}
                                     </span>
