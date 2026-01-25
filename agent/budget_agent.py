@@ -15,7 +15,7 @@ from agent.tools import AgentTools, ToolResult
 load_dotenv()
 
 try:
-    from groq import Groq
+    from groq import AsyncGroq
     GROQ_AVAILABLE = True
 except ImportError:
     GROQ_AVAILABLE = False
@@ -116,7 +116,7 @@ Be concise and practical. Focus on actionable solutions."""
         if GROQ_AVAILABLE:
             api_key = os.getenv("GROQ_API_KEY")
             if api_key:
-                self._client = Groq(api_key=api_key)
+                self._client = AsyncGroq(api_key=api_key)
     
     async def find_affordability_paths(self,
                                        product: Dict[str, Any],
@@ -203,7 +203,7 @@ Find up to 3 viable paths to make this purchase affordable."""
             iterations += 1
             
             try:
-                response = self._client.chat.completions.create(
+                response = await self._client.chat.completions.create(
                     model=self.MODEL,
                     messages=messages,
                     max_tokens=500,

@@ -16,3 +16,36 @@
 {"timestamp": "2026-01-23T11:47:32.467048", "type": "search", "query": "4K monitor", "user_id": "demo_user", "path": "fast", "latency_ms": 4080.09, "cache_hit": false, "result_count": 5}
 {"timestamp": "2026-01-23T11:48:23.138748", "type": "search", "query": "recommend me some cool mouses", "user_id": "demo_user", "path": "smart", "latency_ms": 17336.49, "cache_hit": false, "result_count": 0}
 {"timestamp": "2026-01-23T11:48:42.544707", "type": "search", "query": "recommend me some cool keyboard", "user_id": "demo_user", "path": "smart", "latency_ms": 4399.86, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-24T19:31:34.993693", "type": "search", "query": "laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 35.98, "cache_hit": true, "result_count": 5}
+{"timestamp": "2026-01-24T19:32:12.775231", "type": "search", "query": "gaming mouse with high dpi", "user_id": "demo_user", "path": "smart", "latency_ms": 15297.04, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-24T19:38:42.884226", "type": "search", "query": "complete gaming setup bundle", "user_id": "demo_user", "path": "deep", "latency_ms": 368.8, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-24T19:45:28.930066", "type": "search", "query": "omplete gaming setup bundle", "user_id": "demo_user", "path": "deep", "latency_ms": 14079.7, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-24T19:50:28.590490", "type": "search", "query": "Home office setup", "user_id": "demo_user", "path": "smart", "latency_ms": 462.93, "cache_hit": false, "result_count": 15}
+{"timestamp": "2026-01-24T19:50:46.597321", "type": "search", "query": "whole gaming setup", "user_id": "demo_user", "path": "smart", "latency_ms": 263.54, "cache_hit": false, "result_count": 8}
+{"timestamp": "2026-01-24T19:50:55.872723", "type": "search", "query": "whole gaming bundle", "user_id": "demo_user", "path": "smart", "latency_ms": 383.85, "cache_hit": false, "result_count": 5}
+{"timestamp": "2026-01-24T19:51:02.555200", "type": "search", "query": "gaming bundle", "user_id": "demo_user", "path": "smart", "latency_ms": 358.88, "cache_hit": false, "result_count": 6}
+{"timestamp": "2026-01-24T19:51:49.644803", "type": "search", "query": "complete gaming setup bundle", "user_id": "demo_user", "path": "deep", "latency_ms": 270.83, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-24T19:52:10.676194", "type": "search", "query": "Complete gaming rig", "user_id": "demo_user", "path": "smart", "latency_ms": 267.9, "cache_hit": false, "result_count": 12}
+{"timestamp": "2026-01-24T19:52:21.904591", "type": "search", "query": "complete home setup bundle", "user_id": "demo_user", "path": "deep", "latency_ms": 281.84, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T14:08:00.880296", "type": "search", "query": "gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 122.1, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T14:08:12.261897", "type": "search", "query": "keyboard", "user_id": "demo_user", "path": "fast", "latency_ms": 39.78, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T14:08:40.565895", "type": "search", "query": "laptop under 1000$", "user_id": "demo_user", "path": "smart", "latency_ms": 17301.22, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:44:00.416273", "type": "search", "query": "laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 312.69, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:44:06.582681", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 37.26, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:44:24.478031", "type": "search", "query": "laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 32.98, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:44:30.797214", "type": "search", "query": "Mechanical keyboard", "user_id": "demo_user", "path": "fast", "latency_ms": 34.86, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:44:34.099556", "type": "search", "query": "laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 36.72, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:44:40.984778", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 140.27, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:47:28.349282", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 36.77, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:47:35.289150", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 45.32, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:48:15.042659", "type": "search", "query": "Home office setup", "user_id": "demo_user", "path": "smart", "latency_ms": 20747.91, "cache_hit": false, "result_count": 15}
+{"timestamp": "2026-01-25T16:54:00.833208", "type": "search", "query": "Gaming laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 203.42, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:54:16.582580", "type": "search", "query": "Home office setup", "user_id": "demo_user", "path": "smart", "latency_ms": 12355.5, "cache_hit": false, "result_count": 15}
+{"timestamp": "2026-01-25T16:54:34.314504", "type": "search", "query": "4K monitor", "user_id": "demo_user", "path": "fast", "latency_ms": 34.76, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:54:39.399604", "type": "search", "query": "4K monitor", "user_id": "demo_user", "path": "fast", "latency_ms": 38.22, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:54:41.584688", "type": "search", "query": "Wireless headphones", "user_id": "demo_user", "path": "fast", "latency_ms": 139.65, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:54:43.415561", "type": "search", "query": "Mechanical keyboard", "user_id": "demo_user", "path": "fast", "latency_ms": 36.65, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:54:44.964932", "type": "search", "query": "Wireless headphones", "user_id": "demo_user", "path": "fast", "latency_ms": 140.25, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:54:59.143151", "type": "search", "query": "gaming setup", "user_id": "demo_user", "path": "smart", "latency_ms": 447.21, "cache_hit": false, "result_count": 14}
+{"timestamp": "2026-01-25T16:55:54.087269", "type": "search", "query": "pc", "user_id": "demo_user", "path": "fast", "latency_ms": 134.1, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T16:56:00.358442", "type": "search", "query": "laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 148.82, "cache_hit": false, "result_count": 0}

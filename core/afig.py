@@ -93,7 +93,8 @@ class AFIG:
                 port=os.getenv("POSTGRES_PORT", "5432"),
                 database=os.getenv("POSTGRES_DB", "finbundle"),
                 user=os.getenv("POSTGRES_USER", "user"),
-                password=os.getenv("POSTGRES_PASSWORD", "password")
+                password=os.getenv("POSTGRES_PASSWORD", "password"),
+                connect_timeout=1
             )
             
             with self._conn.cursor() as cur:

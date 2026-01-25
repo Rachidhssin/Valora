@@ -26,11 +26,14 @@ class SearchResult:
     brand: str
     price: float
     rating: float
+    rating_count: int
     score: float  # Similarity score
     condition: str
     in_stock: bool
     features: List[str]
+    image_url: str = ""
     description: str = ""
+    specs: Dict = None
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -40,11 +43,14 @@ class SearchResult:
             'brand': self.brand,
             'price': self.price,
             'rating': self.rating,
+            'rating_count': self.rating_count,
             'score': self.score,
             'condition': self.condition,
             'in_stock': self.in_stock,
             'features': self.features,
-            'description': self.description
+            'image_url': self.image_url,
+            'description': self.description,
+            'specs': self.specs or {}
         }
 
 
@@ -59,6 +65,32 @@ class QdrantSearch:
         
         if QDRANT_AVAILABLE:
             self._init_client()
+            
+    def enrich_results(self, results: List[SearchResult]) -> List[SearchResult]:
+        """
+        Enrich Qdrant results with full details from PostgreSQL.
+        """
+        from db.products import get_products_by_ids
+        
+        if not results:
+            return []
+            
+        product_ids = [r.product_id for r in results]
+        db_products = {p['product_id']: p for p in get_products_by_ids(product_ids)}
+        
+        enriched = []
+        for r in results:
+            if r.product_id in db_products:
+                p = db_products[r.product_id]
+                # Update fields that might be truncated in Qdrant or missing
+                r.description = p.get('description', r.description)
+                r.specs = p.get('details', {})
+                r.image_url = p.get('image_url', "")
+                r.features = p.get('features', r.features)
+                r.rating_count = p.get('rating_count', r.rating_count)
+            enriched.append(r)
+            
+        return enriched
     
     def _init_client(self):
         """Initialize Qdrant client."""
@@ -249,6 +281,7 @@ class QdrantSearch:
             brand=payload.get("brand", ""),
             price=payload.get("price", 0.0),
             rating=payload.get("rating", 0.0),
+            rating_count=payload.get("rating_count", 0),
             score=hit.score,
             condition=payload.get("condition", "new"),
             in_stock=payload.get("in_stock", True),

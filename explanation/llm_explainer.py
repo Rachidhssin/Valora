@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 try:
-    from groq import Groq
+    from groq import AsyncGroq
     GROQ_AVAILABLE = True
 except ImportError:
     GROQ_AVAILABLE = False
@@ -39,7 +39,7 @@ class LLMExplainer:
         if GROQ_AVAILABLE:
             api_key = os.getenv("GROQ_API_KEY")
             if api_key:
-                self._client = Groq(api_key=api_key)
+                self._client = AsyncGroq(api_key=api_key)
         
         if cache_enabled and PostgreSQLCache:
             try:
@@ -130,7 +130,7 @@ Requirements:
 Write the recommendation:"""
 
         try:
-            response = self._client.chat.completions.create(
+            response = await self._client.chat.completions.create(
                 model=self.MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=100,

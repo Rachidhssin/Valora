@@ -136,24 +136,36 @@ class BundleOptimizer:
     
     def _ensure_products(self, items: List) -> List[Product]:
         """Convert dicts to Product objects."""
-        products = []
+        p_items = []
         for item in items:
             if isinstance(item, Product):
-                products.append(item)
+                p_items.append(item)
             elif isinstance(item, dict):
-                utility = item.get('utility', item.get('_feasibility', {}).get('adjusted_utility', 0.5))
-                products.append(Product(
-                    id=item.get('product_id', item.get('id', '')),
-                    name=item.get('name', ''),
-                    price=item.get('price', 0),
-                    category=item.get('category', ''),
-                    utility=utility
+                # Handle ID mapping
+                pid = item.get("id") or item.get("product_id") or ""
+                # Handle Category mapping
+                cat = item.get("category") or item.get("main_category") or "Unknown"
+                # Handle Name mapping
+                name = item.get("name") or item.get("title") or "Unknown"
+                
+                # Default utility if not present (will be calc later if 0)
+                util = item.get("utility", 0.0) 
+                # If score is present (from search), use it as base utility
+                if util == 0.0 and "score" in item:
+                    util = item["score"]
+                
+                p_items.append(Product(
+                    id=pid,
+                    name=name,
+                    price=float(item.get("price", 0.0)),
+                    category=cat,
+                    utility=util
                 ))
             elif hasattr(item, 'product_id'):
                 utility = getattr(item, 'utility', 0.5)
                 if hasattr(item, '_feasibility'):
                     utility = item._feasibility.get('adjusted_utility', utility)
-                products.append(Product(
+                p_items.append(Product(
                     id=item.product_id,
                     name=item.name,
                     price=item.price,
