@@ -49,3 +49,8 @@
 {"timestamp": "2026-01-25T16:54:59.143151", "type": "search", "query": "gaming setup", "user_id": "demo_user", "path": "smart", "latency_ms": 447.21, "cache_hit": false, "result_count": 14}
 {"timestamp": "2026-01-25T16:55:54.087269", "type": "search", "query": "pc", "user_id": "demo_user", "path": "fast", "latency_ms": 134.1, "cache_hit": false, "result_count": 0}
 {"timestamp": "2026-01-25T16:56:00.358442", "type": "search", "query": "laptop", "user_id": "demo_user", "path": "fast", "latency_ms": 148.82, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T17:00:56.500711", "type": "search", "query": "Mechanical keyboard", "user_id": "demo_user", "path": "fast", "latency_ms": 38.36, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T17:00:57.844938", "type": "search", "query": "Mechanical keyboard", "user_id": "demo_user", "path": "fast", "latency_ms": 36.96, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T17:01:03.575438", "type": "search", "query": "KEYBOARD", "user_id": "demo_user", "path": "fast", "latency_ms": 38.73, "cache_hit": false, "result_count": 0}
+{"timestamp": "2026-01-25T17:01:21.631617", "type": "search", "query": "Home office setup", "user_id": "demo_user", "path": "smart", "latency_ms": 849.39, "cache_hit": false, "result_count": 15}
+{"timestamp": "2026-01-25T17:01:46.736246", "type": "search", "query": "Home office setup", "user_id": "demo_user", "path": "smart", "latency_ms": 621.6, "cache_hit": false, "result_count": 15}
