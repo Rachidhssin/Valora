@@ -6,10 +6,22 @@ import json
 import time
 import os
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Optional, Any, Dict
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+class DecimalEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles Decimal and datetime types."""
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
 
 # Try PostgreSQL, fall back to in-memory
 try:
@@ -134,7 +146,7 @@ class PostgreSQLCache:
                     ON CONFLICT (key) DO UPDATE SET
                         value = EXCLUDED.value,
                         expires_at = EXCLUDED.expires_at
-                """, (key, json.dumps(value), expires_at))
+                """, (key, json.dumps(value, cls=DecimalEncoder), expires_at))
                 self._conn.commit()
             return True
         except Exception as e:

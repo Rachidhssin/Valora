@@ -52,53 +52,57 @@ class FinBundleEngine:
         """
         start_time = time.time()
         cart = cart or []
+        afig = None
         
-        # 1. Load User Context
-        afig = AFIG(user_id)
-        afig_context = afig.reconcile()
-        afig.update_situational({'mission': query, 'budget_override': budget})
-        
-        # 2. Route Query
-        path = self.router.route(query, budget, afig_context)
-        
-        # 3. Execute Path Logic with Timeouts
         try:
-            if path == "fast":
-                result = await self._fast_path(query, budget, afig_context)
-            elif path == "smart":
-                result = await asyncio.wait_for(
-                    self._smart_path(query, budget, afig_context), 
-                    timeout=0.5
-                )
-            else:  # deep
-                result = await asyncio.wait_for(
-                    self._deep_path(query, budget, afig_context, user_id, cart, skip_explanations),
-                    timeout=5.0
-                )
-        except asyncio.TimeoutError:
-            print(f"⚠️ Path {path} timed out! Falling back to fast/smart path.")
-            # Fallback logic
-            if path == "deep":
-                 result = await self._smart_path(query, budget, afig_context)
-            else:
-                 result = await self._fast_path(query, budget, afig_context)
-            result['metrics'] = {'note': 'Fallback due to timeout'}
+            # 1. Load User Context
+            afig = AFIG(user_id)
+            afig_context = afig.reconcile()
+            afig.update_situational({'mission': query, 'budget_override': budget})
+        
+            # 2. Route Query
+            path = self.router.route(query, budget, afig_context)
             
-        # 4. Metrics & Logging
-        total_latency = (time.time() - start_time) * 1000
-        if 'metrics' not in result:
-             result['metrics'] = {}
-             
-        result['metrics'].update({
-            'total_latency_ms': round(total_latency, 2),
-            'path_used': path,
-            'user_id': user_id
-        })
-        
-        afig.update_behavioral({'type': 'search', 'query': query})
-        afig.close()
-        
-        return result
+            # 3. Execute Path Logic with Timeouts
+            try:
+                if path == "fast":
+                    result = await self._fast_path(query, budget, afig_context)
+                elif path == "smart":
+                    result = await asyncio.wait_for(
+                        self._smart_path(query, budget, afig_context), 
+                        timeout=0.5
+                    )
+                else:  # deep
+                    result = await asyncio.wait_for(
+                        self._deep_path(query, budget, afig_context, user_id, cart, skip_explanations),
+                        timeout=5.0
+                    )
+            except asyncio.TimeoutError:
+                print(f"⚠️ Path {path} timed out! Falling back to fast/smart path.")
+                # Fallback logic
+                if path == "deep":
+                     result = await self._smart_path(query, budget, afig_context)
+                else:
+                     result = await self._fast_path(query, budget, afig_context)
+                result['metrics'] = {'note': 'Fallback due to timeout'}
+                
+            # 4. Metrics & Logging
+            total_latency = (time.time() - start_time) * 1000
+            if 'metrics' not in result:
+                 result['metrics'] = {}
+                 
+            result['metrics'].update({
+                'total_latency_ms': round(total_latency, 2),
+                'path_used': path,
+                'user_id': user_id
+            })
+            
+            afig.update_behavioral({'type': 'search', 'query': query})
+            
+            return result
+        finally:
+            if afig:
+                afig.close()
 
     async def _fast_path(self, query: str, budget: float, afig_context: Dict) -> Dict:
         """Fast Path: Cache-first serving (<100ms)"""
@@ -124,16 +128,23 @@ class FinBundleEngine:
             # Query PostgreSQL for popular products in category
             results = get_popular_products_by_category(categories[0], limit=10)
             if results:
-                # Cache for longer duration
-                self.cache.set(cache_key, {'results': results}, ttl=3600)
-                return {
-                    'path': 'fast',
-                    'cache_hit': False,
-                    'results': results,
-                    'latency_ms': (time.time() - start) * 1000
-                }
-            
-        return {'path': 'fast', 'results': [], 'note': 'No results found in fast path'}
+                # Apply budget filter
+                if budget:
+                    results = [r for r in results if r.get('price', 0) <= budget]
+                
+                if results:
+                    # Cache for longer duration
+                    self.cache.set(cache_key, {'results': results}, ttl=3600)
+                    return {
+                        'path': 'fast',
+                        'cache_hit': False,
+                        'results': results,
+                        'latency_ms': (time.time() - start) * 1000
+                    }
+        
+        # Fast path has no results - fall back to smart path
+        print(f"⚡ Fast path found no results for '{query}', falling back to smart path")
+        return await self._smart_path(query, budget, afig_context)
 
     async def _smart_path(self, query: str, budget: float, afig_context: Dict) -> Dict:
         """Smart Path: Vector Search + Feasibility (<300ms)"""
@@ -142,20 +153,16 @@ class FinBundleEngine:
         # Encode
         query_vec = self.embedder.encode_query(query)
         
-        # Search Qdrant
-        intent = self.router.get_query_intent(query)
-        if intent.get('categories'):
-            results = self.qdrant.search_with_constraints(
-                query_vector=query_vec.tolist(),
-                category=intent['categories'][0],
-                max_price=budget,
-                limit=20
-            )
-        else:
-            results = self.qdrant.search(query_vec.tolist(), limit=20)
+        # Search Qdrant - use plain search first, then filter in Python
+        # This avoids issues with missing payload indexes in Qdrant
+        results = self.qdrant.search(query_vec.tolist(), limit=50)
             
         # Enrich with full DB data (description, specs, etc.)
         results = self.qdrant.enrich_results(results)
+        
+        # Apply price filter in Python
+        if budget:
+            results = [r for r in results if r.price <= budget]
             
         # Feasibility Filter
         feasible = self.feasibility.filter_candidates(results, afig_context, budget)
@@ -214,16 +221,21 @@ class FinBundleEngine:
         # 4. Agent Activation (if gap exists)
         gap = bundle_result.total_price - budget
         agent_paths = None
-        if gap > 50: # Threshold from spec says 100, but preserving 50 from previous code logic or updating to spec? Spec says 100.
-            # Using 100 as per spec, but let's stick to 50 to be safe/responsive
-             bundle_product = {'name': f"Bundle: {query}", 'price': bundle_result.total_price}
-             agent_paths = await self.agent.find_affordability_paths(
-                 product=bundle_product,
-                 user_afig=afig_context,
-                 current_cart=cart,
-                 budget=budget,
-                 skip_llm=skip_explanations
-             )
+        if gap > 50:  # Activate agent when $50+ over budget
+            bundle_product = {
+                'name': f"Bundle: {query}", 
+                'price': bundle_result.total_price,
+                'category': intent.get('categories', ['electronics'])[0] if intent.get('categories') else 'electronics'
+            }
+            agent_result = await self.agent.find_affordability_paths(
+                product=bundle_product,
+                user_afig=afig_context,
+                current_cart=cart,
+                budget=budget
+            )
+            # Convert AgentResult to dict for JSON serialization
+            if agent_result:
+                agent_paths = agent_result.to_dict() if hasattr(agent_result, 'to_dict') else agent_result
 
         # 5. Explanations
         explanations = []

@@ -202,10 +202,10 @@ async def quick_search(
 @app.get("/api/user/{user_id}/profile", response_model=UserProfile)
 async def get_user_profile(user_id: str):
     """Get user's AFIG profile."""
+    afig = None
     try:
         afig = AFIG(user_id)
         profile = afig.reconcile()
-        afig.close()
         
         return UserProfile(
             user_id=profile["user_id"],
@@ -217,11 +217,15 @@ async def get_user_profile(user_id: str):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if afig:
+            afig.close()
 
 
 @app.put("/api/user/{user_id}/situational")
 async def update_situational(user_id: str, update: AFIGUpdate):
     """Update user's situational context."""
+    afig = None
     try:
         afig = AFIG(user_id)
         
@@ -237,27 +241,32 @@ async def update_situational(user_id: str, update: AFIGUpdate):
             afig.update_situational(updates)
         
         profile = afig.reconcile()
-        afig.close()
         
         return {"success": True, "profile": profile}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if afig:
+            afig.close()
 
 
 @app.post("/api/user/{user_id}/signal")
 async def track_signal(user_id: str, signal: BehavioralSignal):
     """Track a behavioral signal."""
+    afig = None
     try:
         afig = AFIG(user_id)
         afig.update_behavioral({
             "type": signal.type,
             **signal.data
         })
-        afig.close()
         
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if afig:
+            afig.close()
 
 
 @app.get("/api/categories")
@@ -287,6 +296,99 @@ async def get_metrics_summary():
         return metrics.analyze(last_n_hours=24)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class OptimizeRequest(BaseModel):
+    cart: List[Dict[str, Any]] = Field(..., min_items=1)
+    budget: float = Field(..., ge=10, le=50000)
+    user_id: str = Field(default="anonymous")
+
+
+@app.post("/api/optimize")
+async def optimize_bundle(request: OptimizeRequest):
+    """
+    Optimize the user's cart bundle.
+    Finds alternative products that maximize utility within budget.
+    """
+    afig = None
+    try:
+        engine = app.state.engine
+        
+        # Get user context
+        afig = AFIG(request.user_id)
+        afig_context = afig.reconcile()
+        
+        # Extract categories from cart items
+        categories = list(set(item.get('category', 'electronics') for item in request.cart))
+        cart_query = ' '.join(categories)
+        
+        # Get broader candidate pool based on cart categories
+        query_vec = engine.embedder.encode_query(cart_query)
+        candidates = engine.qdrant.search(query_vec.tolist(), limit=50)
+        candidates = engine.qdrant.enrich_results(candidates)
+        
+        # Add current cart items as candidates too
+        for item in request.cart:
+            item['utility'] = item.get('utility', 0.5)
+            candidates.append(item)
+        
+        # Filter by feasibility
+        feasible = engine.feasibility.filter_candidates(candidates, afig_context, request.budget)
+        
+        # Run bundle optimization
+        bundle_result = engine.optimizer.optimize(
+            products=feasible,
+            budget=request.budget,
+            user_prefs=afig_context,
+            required_categories=categories,
+            max_items=8
+        )
+        
+        # Handle case where optimization fails
+        if bundle_result is None or not bundle_result.bundle:
+            return {
+                "success": False,
+                "error": "Could not optimize bundle with given constraints",
+                "original_total": round(sum(item.get('price', 0) for item in request.cart), 2),
+                "optimized_total": 0,
+                "savings": 0,
+                "optimized_products": []
+            }
+        
+        # Calculate savings vs original cart
+        original_total = sum(item.get('price', 0) for item in request.cart)
+        optimized_total = bundle_result.total_price
+        savings = original_total - optimized_total
+        
+        return {
+            "success": True,
+            "original_total": round(original_total, 2),
+            "optimized_total": round(optimized_total, 2),
+            "savings": round(savings, 2),
+            "bundle": bundle_result.to_dict(),
+            "optimized_products": [
+                {
+                    "product_id": p.id,
+                    "name": p.name,
+                    "price": p.price,
+                    "category": p.category,
+                    "utility": p.utility,
+                    "image_url": p.image_url,
+                    "brand": p.brand,
+                    "rating": p.rating
+                }
+                for p in bundle_result.bundle
+            ],
+            "method": bundle_result.method,
+            "status": bundle_result.status.value
+        }
+        
+    except Exception as e:
+        app.state.metrics.log_error("optimize", str(e), {"cart_size": len(request.cart)})
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if afig:
+            afig.close()
 
 
 # --- Run Server ---

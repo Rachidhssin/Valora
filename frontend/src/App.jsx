@@ -9,6 +9,7 @@ import ProductCard from './components/ProductCard'
 import FinancialDNACard from './components/FinancialDNACard'
 import BundleCart from './components/BundleCart'
 import CounterfactualSlider from './components/CounterfactualSlider'
+import AffordabilityPaths from './components/AffordabilityPaths'
 
 // Store
 import { useStore } from './store/useStore'
@@ -114,6 +115,14 @@ function App() {
 
     // Handle bundle optimization
     const handleOptimize = async () => {
+        if (cart.length === 0) {
+            setError('Cart is empty, nothing to optimize')
+            return
+        }
+        
+        setIsLoading(true)
+        setError(null)
+        
         try {
             const response = await fetch('/api/optimize', {
                 method: 'POST',
@@ -127,11 +136,38 @@ function App() {
 
             if (response.ok) {
                 const data = await response.json()
-                // Update cart with optimized bundle if provided
                 console.log('Optimization result:', data)
+                
+                if (data.success && data.optimized_products && data.optimized_products.length > 0) {
+                    // Show optimization results
+                    setSearchResult({
+                        path: 'optimized',
+                        results: data.optimized_products,
+                        bundle: data.bundle,
+                        metrics: {
+                            original_total: data.original_total,
+                            optimized_total: data.optimized_total,
+                            savings: data.savings,
+                            method: data.method
+                        }
+                    })
+                    
+                    // Show savings notification if any
+                    if (data.savings > 0) {
+                        console.log(`💰 Saved $${data.savings.toFixed(2)} through optimization!`)
+                    }
+                } else {
+                    setError('Could not find better alternatives. Your current bundle may already be optimal!')
+                }
+            } else {
+                const errorData = await response.json().catch(() => ({}))
+                setError(errorData.detail || 'Optimization failed. Please try again.')
             }
         } catch (err) {
             console.error('Optimization error:', err)
+            setError('Failed to optimize bundle. Is the backend running?')
+        } finally {
+            setIsLoading(false)
         }
     }
 
@@ -142,7 +178,10 @@ function App() {
     }
 
     // Get products from search result
-    const products = searchResult?.results || searchResult?.bundle?.items || []
+    // Handle different response formats: 
+    // - fast/smart paths: data.results
+    // - deep path: data.bundle.bundle (after normalization in handleSearch)
+    const products = searchResult?.results || []
 
     // Quick search suggestions
     const quickSearches = [
@@ -249,7 +288,7 @@ function App() {
                                     {quickSearches.map(({ query, emoji }) => (
                                         <button
                                             key={query}
-                                            onClick={() => handleSearch({ text: query, budget })}
+                                            onClick={() => handleSearch({ text: query, image: null, budget, context: null })}
                                             className="px-4 py-2 bg-white/5 hover:bg-white/10 
                                                      border border-white/10 hover:border-white/20
                                                      rounded-full text-sm text-white/70 hover:text-white 
@@ -368,6 +407,40 @@ function App() {
                                     onOptimize={handleOptimize}
                                     onCounterfactual={() => setShowCounterfactual(true)}
                                 />
+
+                                {/* Bundle Status Indicator */}
+                                {searchResult?.bundle && !searchResult?.agent_paths && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="p-4 bg-green-500/10 border border-green-500/30 rounded-xl"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
+                                                <Sparkles className="w-5 h-5 text-green-400" />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-sm font-medium text-green-400">
+                                                    Bundle Within Budget! ✓
+                                                </h4>
+                                                <p className="text-xs text-white/60 mt-0.5">
+                                                    Total: ${searchResult.bundle.total_price?.toFixed(2)} / ${budget}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                )}
+
+                                {/* Affordability Paths (from Budget Agent) */}
+                                {searchResult?.agent_paths && (
+                                    <AffordabilityPaths
+                                        agentPaths={searchResult.agent_paths}
+                                        onApplyPath={(path) => {
+                                            console.log('Applying path:', path)
+                                            // Handle path application (e.g., remove cart items, show installment modal)
+                                        }}
+                                    />
+                                )}
                             </div>
                         </div>
                     </div>

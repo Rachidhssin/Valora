@@ -23,8 +23,13 @@ export default function BundleCart({ onOptimize, onCounterfactual }) {
 
     const handleOptimize = async () => {
         setIsOptimizing(true)
-        await onOptimize?.()
-        setIsOptimizing(false)
+        try {
+            await onOptimize?.()
+        } catch (err) {
+            console.error('Optimization error:', err)
+        } finally {
+            setIsOptimizing(false)
+        }
     }
 
     return (

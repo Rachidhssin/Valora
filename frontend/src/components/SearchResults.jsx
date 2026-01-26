@@ -195,7 +195,7 @@ function ProductGrid({ products = [] }) {
 
                     <div className="flex items-center justify-between mt-3">
                         <div>
-                            <span className="text-lg font-bold text-primary-400">${product.price}</span>
+                            <span className="text-lg font-bold text-primary-400">${product.price?.toFixed(2)}</span>
                             <div className="flex items-center gap-2 text-sm text-white/60">
                                 <span>⭐ {product.rating}/5</span>
                                 {(product.utility !== undefined && product.utility > 0) && (
@@ -250,7 +250,7 @@ function BundleItem({ item, explanation }) {
                     )}
                 </div>
                 <div className="text-right">
-                    <p className="text-lg font-bold text-primary-400">${item.price}</p>
+                    <p className="text-lg font-bold text-primary-400">${item.price?.toFixed(2)}</p>
                     <p className="text-xs text-white/50">Utility: {item.utility?.toFixed(3)}</p>
                     <button
                         onClick={() => addToCart({ product_id: item.id, ...item })}

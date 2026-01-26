@@ -280,10 +280,39 @@ def get_category_counts() -> Dict[str, int]:
     return {}
 
 
+# Map common search terms to actual database categories
+CATEGORY_MAPPING = {
+    'laptops': 'Computers',
+    'laptop': 'Computers',
+    'computers': 'Computers',
+    'computer': 'Computers',
+    'monitors': 'Computers',
+    'monitor': 'Computers',
+    'keyboards': 'Computers',
+    'keyboard': 'Computers',
+    'mouse': 'Computers',
+    'mice': 'Computers',
+    'headsets': 'All Electronics',
+    'headset': 'All Electronics',
+    'headphones': 'All Electronics',
+    'speakers': 'Home Audio & Theater',
+    'speaker': 'Home Audio & Theater',
+    'cameras': 'Camera & Photo',
+    'camera': 'Camera & Photo',
+    'phones': 'Cell Phones & Accessories',
+    'phone': 'Cell Phones & Accessories',
+    'electronics': 'All Electronics',
+}
+
+
 def get_popular_products_by_category(category: str, limit: int = 10) -> List[Dict]:
     """
     Get popular products in a category (sorted by rating and review count).
+    Supports fuzzy category matching.
     """
+    # Map common terms to actual categories
+    actual_category = CATEGORY_MAPPING.get(category.lower(), category)
+    
     # Simple 'popular' heuristic: High rating + many reviews
     query = """
         SELECT * FROM products 
@@ -292,7 +321,7 @@ def get_popular_products_by_category(category: str, limit: int = 10) -> List[Dic
         LIMIT %s
     """
     
-    result = execute_query(query, (category, limit))
+    result = execute_query(query, (actual_category, limit))
     if not result:
         return []
         

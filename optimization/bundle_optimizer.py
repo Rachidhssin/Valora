@@ -31,6 +31,9 @@ class Product:
     price: float
     category: str
     utility: float  # Pre-computed utility score (0-1)
+    image_url: str = ""  # Product image URL
+    brand: str = ""  # Product brand
+    rating: float = 0.0  # Product rating
     
     def __hash__(self):
         return hash(self.id)
@@ -51,7 +54,9 @@ class OptimizationResult:
         return {
             'status': self.status.value,
             'bundle': [{'id': p.id, 'name': p.name, 'price': p.price, 
-                       'category': p.category, 'utility': p.utility} for p in self.bundle],
+                       'category': p.category, 'utility': p.utility,
+                       'image_url': p.image_url, 'brand': p.brand, 
+                       'rating': p.rating} for p in self.bundle],
             'total_price': round(self.total_price, 2),
             'total_utility': round(self.total_utility, 4),
             'budget_used': round(self.budget_used, 4),
@@ -159,7 +164,10 @@ class BundleOptimizer:
                     name=name,
                     price=float(item.get("price", 0.0)),
                     category=cat,
-                    utility=util
+                    utility=util,
+                    image_url=item.get("image_url", ""),
+                    brand=item.get("brand", ""),
+                    rating=float(item.get("rating", 0.0))
                 ))
             elif hasattr(item, 'product_id'):
                 utility = getattr(item, 'utility', 0.5)
@@ -170,9 +178,12 @@ class BundleOptimizer:
                     name=item.name,
                     price=item.price,
                     category=item.category,
-                    utility=utility
+                    utility=utility,
+                    image_url=getattr(item, 'image_url', ""),
+                    brand=getattr(item, 'brand', ""),
+                    rating=float(getattr(item, 'rating', 0.0))
                 ))
-        return products
+        return p_items
     
     def _milp_optimize(self, products: List[Product], budget: float,
                        required_categories: Optional[List[str]],

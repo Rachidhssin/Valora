@@ -1,483 +1,867 @@
 """
 Budget Pathfinder Agent
-ReAct agent that finds creative ways to make products affordable
+========================
+ReAct-style agent that finds creative ways to make products affordable.
+Uses Groq LLM for reasoning with function calling.
+
+The agent follows the ReAct (Reasoning + Acting) pattern:
+1. THINK: Analyze the situation and decide what to do
+2. ACT: Call a tool to gather information
+3. OBSERVE: Process the tool result
+4. Repeat until 3 viable paths are found or max iterations reached
+
+Features:
+- Groq LLM integration with function calling
+- 5 specialized tools for finding affordability paths
+- Rate limit handling with exponential backoff
+- Comprehensive error handling and logging
+- Conversation trace for debugging/demo
 """
+
 import os
 import json
 import asyncio
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from datetime import datetime
 from dotenv import load_dotenv
 
-from agent.tools import AgentTools, ToolResult
+from agent.tools import AgentTools
 
 load_dotenv()
 
+# Try to import Groq
 try:
-    from groq import AsyncGroq
+    from groq import AsyncGroq, RateLimitError
     GROQ_AVAILABLE = True
 except ImportError:
     GROQ_AVAILABLE = False
+    RateLimitError = Exception  # Fallback
 
 
 class PathType(Enum):
+    """Types of affordability paths the agent can find."""
     CART_REMOVAL = "cart_removal"
+    SAVE_AND_WAIT = "save_and_wait"
+    INSTALLMENT = "installment"
     REFURBISHED = "refurbished"
-    FINANCING = "financing"
-    BUNDLE = "bundle"
-    WAIT_FOR_SALE = "wait_for_sale"
+    BUNDLE_SWAP = "bundle_swap"
     NO_PATH = "no_path"
 
 
 @dataclass
-class AffordabilityPath:
-    """A single affordability solution path."""
-    viable: bool
-    path_type: PathType
-    summary: str
-    action: str
-    trade_off: str
-    savings: float = 0.0
-    details: Dict[str, Any] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'viable': self.viable,
-            'path_type': self.path_type.value,
-            'summary': self.summary,
-            'action': self.action,
-            'trade_off': self.trade_off,
-            'savings': self.savings,
-            'details': self.details or {}
-        }
+class ConversationEntry:
+    """A single entry in the agent's conversation trace."""
+    step: int
+    entry_type: str  # "think", "action", "observation"
+    content: str
+    tool_name: Optional[str] = None
+    tool_args: Optional[Dict] = None
+    tool_result: Optional[Dict] = None
+    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
 
 @dataclass
 class AgentResult:
     """Result from the Budget Pathfinder Agent."""
-    status: str  # 'paths_found', 'no_paths', 'error'
-    gap: float  # Budget gap
-    paths: List[AffordabilityPath]
-    reasoning_trace: List[str]
-    iterations: int
+    status: str  # 'paths_found', 'no_solutions', 'affordable', 'error', 'timeout'
+    gap: float
+    paths: List[Dict[str, Any]]
+    agent_steps: int
+    conversation: List[Dict[str, Any]]
+    token_usage: Dict[str, int] = field(default_factory=lambda: {"prompt": 0, "completion": 0})
+    error_message: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
         return {
             'status': self.status,
             'gap': self.gap,
-            'paths': [p.to_dict() for p in self.paths],
-            'reasoning_trace': self.reasoning_trace,
-            'iterations': self.iterations
+            'paths': self.paths,
+            'agent_steps': self.agent_steps,
+            'conversation': self.conversation,
+            'token_usage': self.token_usage,
+            'error_message': self.error_message
         }
 
 
 class BudgetPathfinderAgent:
     """
     ReAct agent that finds creative affordability paths.
-    Uses Groq LLM for reasoning with tool calling.
+    
+    Uses Groq LLM with function calling to explore solutions systematically.
+    The agent thinks, acts (calls tools), observes results, and repeats
+    until it finds 3 viable paths or reaches max iterations.
+    
+    Attributes:
+        max_iterations: Maximum ReAct loop iterations (default: 5)
+        model: Groq model to use (default: llama-3.1-8b-instant)
+        verbose: Enable detailed logging for demos
     """
     
-    MAX_ITERATIONS = 5
-    MODEL = "llama-3.1-8b-instant"  # Fast, free-tier Groq model
-    
-    SYSTEM_PROMPT = """You are a Budget Pathfinder Agent helping users afford products within their budget.
-
-Your job is to analyze the budget gap and find creative solutions using the available tools.
-
-Available tools:
-1. check_cart_removals - Find items to remove from cart to free up budget
-2. find_refurb_alternatives - Find refurbished/open-box options at lower prices
-3. suggest_financing - Get financing options to spread payments
-4. find_bundle_discounts - Find bundle deals for savings
-5. check_upcoming_sales - Check for upcoming sales or price drops
-
-Strategy:
-1. First assess the gap size and user context
-2. Try the most relevant tools based on the situation
-3. Rank solutions by viability and trade-offs
-4. Return at most 3 best paths
-
-For each tool, respond with:
-THOUGHT: [your reasoning]
-ACTION: [tool_name]
-ACTION_INPUT: [json parameters]
-
-After gathering information, respond with:
-THOUGHT: [final analysis]
-ANSWER: [json with paths]
-
-Be concise and practical. Focus on actionable solutions."""
-    
-    def __init__(self):
-        self.tools = AgentTools()
-        self._client = None
-        
-        if GROQ_AVAILABLE:
-            api_key = os.getenv("GROQ_API_KEY")
-            if api_key:
-                self._client = AsyncGroq(api_key=api_key)
-    
-    async def find_affordability_paths(self,
-                                       product: Dict[str, Any],
-                                       user_afig: Dict[str, Any],
-                                       current_cart: List[Dict],
-                                       budget: float,
-                                       skip_llm: bool = False) -> Dict[str, Any]:
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        verbose: bool = False,
+        max_iterations: int = 5,
+        model: str = "llama-3.1-8b-instant"
+    ):
         """
-        Find ways to make a product affordable.
+        Initialize the Budget Pathfinder Agent.
         
         Args:
-            product: Product user wants to add
-            user_afig: Reconciled AFIG context
+            api_key: Groq API key (defaults to GROQ_API_KEY env var)
+            verbose: Enable verbose logging for demos
+            max_iterations: Maximum ReAct loop iterations
+            model: Groq model to use
+        """
+        self.verbose = verbose
+        self.max_iterations = max_iterations
+        self.model = model
+        self.tools_instance = AgentTools(verbose=verbose)
+        self._client = None
+        self.token_usage = {"prompt": 0, "completion": 0}
+        
+        if GROQ_AVAILABLE:
+            key = api_key or os.getenv("GROQ_API_KEY")
+            if key:
+                self._client = AsyncGroq(api_key=key)
+            else:
+                print("⚠️ GROQ_API_KEY not set, agent will use fallback mode")
+        else:
+            print("⚠️ groq package not installed, agent will use fallback mode")
+    
+    async def find_affordability_paths(
+        self,
+        product: Dict[str, Any],
+        user_afig: Dict[str, Any],
+        current_cart: List[Dict],
+        budget: float
+    ) -> Dict[str, Any]:
+        """
+        Main entry point: Find creative affordability paths for a product.
+        
+        This method implements the full ReAct loop:
+        1. Check if product is already affordable
+        2. Build system prompt with context
+        3. Run Think → Act → Observe loop
+        4. Collect and rank viable paths
+        5. Return top 3 paths
+        
+        Args:
+            product: Product user wants {name, price, category}
+            user_afig: User context from AFIG {income_tier, risk_tolerance, ...}
             current_cart: Current cart items
             budget: User's budget
             
         Returns:
-            Dict with affordability paths
+            Dict with:
+            - status: 'paths_found' | 'no_solutions' | 'affordable' | 'error'
+            - gap: Budget shortfall amount
+            - paths: List of viable affordability paths (max 3)
+            - agent_steps: Number of iterations used
+            - conversation: Full ReAct trace for debugging
         """
-        price = product.get('price', 0)
-        cart_total = sum(item.get('price', 0) for item in current_cart)
-        gap = (price + cart_total) - budget
+        try:
+            # Calculate gap
+            price = product.get('price', 0)
+            gap = price - budget
+            
+            # Early exit if affordable
+            if gap <= 0:
+                if self.verbose:
+                    print("✅ Product is already affordable!")
+                return AgentResult(
+                    status="affordable",
+                    gap=0,
+                    paths=[],
+                    agent_steps=0,
+                    conversation=[]
+                ).to_dict()
+            
+            if self.verbose:
+                print(f"\n{'='*60}")
+                print(f"🤖 BUDGET PATHFINDER AGENT ACTIVATED")
+                print(f"{'='*60}")
+                print(f"Product: {product.get('name', 'Unknown')} (${price:.0f})")
+                print(f"Budget: ${budget:.0f}")
+                print(f"Gap: ${gap:.0f}")
+                print(f"{'='*60}\n")
+            
+            # Run with timeout protection
+            result = await asyncio.wait_for(
+                self._run_react_loop(product, user_afig, current_cart, budget, gap),
+                timeout=15.0  # 15 second max
+            )
+            
+            return result.to_dict()
         
-        # If no gap, product is affordable
-        if gap <= 0:
-            return {
-                'status': 'no_gap',
-                'gap': 0,
-                'paths': [],
-                'message': 'Product fits within budget'
-            }
+        except asyncio.TimeoutError:
+            print("⚠️ Agent timed out after 15 seconds")
+            # Fall back to rule-based agent
+            fallback = await self._run_rule_based_agent(product, user_afig, current_cart, budget, gap)
+            return fallback.to_dict()
         
-        # Build context for agent
-        context = {
-            'product': product,
-            'product_price': price,
-            'cart_total': cart_total,
-            'budget': budget,
-            'gap': gap,
-            'user_archetype': user_afig.get('archetype', 'value_balanced'),
-            'timeline': user_afig.get('timeline', 'flexible'),
-            'risk_tolerance': user_afig.get('risk_tolerance', 0.5)
-        }
-        
-        # Run agent loop
-        if self._client and not skip_llm:
-            result = await self._run_llm_agent(context, current_cart)
-        else:
-            # Fallback to rule-based agent
-            result = await self._run_rule_based_agent(context, current_cart)
-        
-        return result.to_dict()
+        except Exception as e:
+            print(f"❌ Agent error: {e}")
+            return AgentResult(
+                status="error",
+                gap=gap if 'gap' in dir() else 0,
+                paths=[],
+                agent_steps=0,
+                conversation=[],
+                error_message=str(e)
+            ).to_dict()
     
-    async def _run_llm_agent(self, context: Dict, cart: List[Dict]) -> AgentResult:
-        """Run LLM-based ReAct agent."""
-        reasoning_trace = []
-        paths = []
-        iterations = 0
+    async def _run_react_loop(
+        self,
+        product: Dict,
+        user_afig: Dict,
+        current_cart: List[Dict],
+        budget: float,
+        gap: float
+    ) -> AgentResult:
+        """
+        Execute the ReAct (Reasoning + Acting) loop.
         
-        # Initial prompt
-        user_prompt = f"""Find affordability paths for this situation:
-
-Product: {context['product'].get('name', 'Unknown')}
-Product Price: ${context['product_price']:.2f}
-Current Cart Total: ${context['cart_total']:.2f}
-Budget: ${context['budget']:.2f}
-Gap to Close: ${context['gap']:.2f}
-
-User Profile:
-- Archetype: {context['user_archetype']}
-- Timeline: {context['timeline']}
-- Risk Tolerance: {context['risk_tolerance']:.2f}
-
-Current Cart Items: {len(cart)} items
-
-Find up to 3 viable paths to make this purchase affordable."""
-
-        messages = [
-            {"role": "system", "content": self.SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt}
-        ]
+        This is the core agent loop that:
+        1. Builds context and system prompt
+        2. Calls LLM with function definitions
+        3. Executes tool calls
+        4. Collects viable paths
+        5. Stops when 3 paths found or max iterations reached
+        """
+        # Reset token tracking
+        self.token_usage = {"prompt": 0, "completion": 0}
         
-        while iterations < self.MAX_ITERATIONS:
-            iterations += 1
+        # Check if LLM is available
+        if not self._client:
+            if self.verbose:
+                print("⚠️ LLM not available, using rule-based fallback")
+            return await self._run_rule_based_agent(product, user_afig, current_cart, budget, gap)
+        
+        # Build system prompt
+        system_prompt = self._build_system_prompt(product, gap, budget, user_afig)
+        
+        # Initialize conversation
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        paths_found = []
+        conversation_history = []
+        iteration = 0
+        
+        # ReAct loop
+        while iteration < self.max_iterations:
+            iteration += 1
+            
+            if self.verbose:
+                print(f"\n🤔 Agent Iteration {iteration}/{self.max_iterations}")
             
             try:
-                response = await self._client.chat.completions.create(
-                    model=self.MODEL,
-                    messages=messages,
-                    max_tokens=500,
-                    temperature=0.3
-                )
+                # 1. THINK: Agent decides what to do
+                response = await self._call_llm_with_retry(messages)
+                assistant_message = response.choices[0].message
                 
-                content = response.choices[0].message.content
-                reasoning_trace.append(f"[Iteration {iterations}] {content[:200]}...")
+                # Track token usage
+                if hasattr(response, 'usage') and response.usage:
+                    self.token_usage["prompt"] += response.usage.prompt_tokens
+                    self.token_usage["completion"] += response.usage.completion_tokens
                 
-                # Parse response
-                if "ANSWER:" in content:
-                    # Agent is done, parse final answer
-                    answer_part = content.split("ANSWER:")[-1].strip()
-                    paths = self._parse_paths(answer_part, context)
+                # Log thinking
+                if assistant_message.content:
+                    if self.verbose:
+                        print(f"💭 Think: {assistant_message.content[:100]}...")
+                    conversation_history.append({
+                        "step": iteration,
+                        "type": "think",
+                        "content": assistant_message.content
+                    })
+                
+                # 2. ACT: Check if agent wants to use tools
+                if assistant_message.tool_calls:
+                    # Add assistant message to conversation
+                    messages.append({
+                        "role": "assistant",
+                        "content": assistant_message.content,
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments
+                                }
+                            }
+                            for tc in assistant_message.tool_calls
+                        ]
+                    })
+                    
+                    # Process each tool call
+                    for tool_call in assistant_message.tool_calls:
+                        tool_name = tool_call.function.name
+                        try:
+                            tool_args = json.loads(tool_call.function.arguments)
+                        except json.JSONDecodeError:
+                            tool_args = {}
+                        
+                        if self.verbose:
+                            print(f"🔧 Action: {tool_name}({json.dumps(tool_args)})")
+                        
+                        # 3. OBSERVE: Execute tool
+                        tool_result = await self._execute_tool(
+                            tool_name,
+                            tool_args,
+                            user_afig,
+                            current_cart,
+                            budget,
+                            gap
+                        )
+                        
+                        if self.verbose:
+                            print(f"📊 Observation: {tool_result.get('summary', 'No result')}")
+                        
+                        # Add tool result to conversation
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "name": tool_name,
+                            "content": json.dumps(tool_result)
+                        })
+                        
+                        conversation_history.append({
+                            "step": iteration,
+                            "type": "action",
+                            "tool": tool_name,
+                            "args": tool_args,
+                            "result": tool_result
+                        })
+                        
+                        # Collect viable paths
+                        if tool_result.get("viable"):
+                            paths_found.append(tool_result)
+                            if self.verbose:
+                                print(f"✅ Found viable path: {tool_result['path_type']}")
+                else:
+                    # No tool calls - agent finished thinking
+                    if self.verbose:
+                        print("✅ Agent completed reasoning")
                     break
                 
-                elif "ACTION:" in content:
-                    # Execute tool
-                    tool_result = self._execute_tool_from_response(content, context, cart)
+                # Stop if we found 3 good paths
+                if len(paths_found) >= 3:
+                    if self.verbose:
+                        print(f"✅ Found {len(paths_found)} paths, stopping")
+                    break
                     
-                    # Add observation to conversation
-                    messages.append({"role": "assistant", "content": content})
-                    messages.append({
-                        "role": "user", 
-                        "content": f"OBSERVATION: {tool_result.message}\nDATA: {json.dumps(tool_result.data)[:500]}"
-                    })
-                else:
-                    # No clear action, push for answer
-                    messages.append({"role": "assistant", "content": content})
-                    messages.append({
-                        "role": "user",
-                        "content": "Based on your analysis, provide your ANSWER with the best affordability paths."
-                    })
-                    
+            except RateLimitError as e:
+                print(f"⚠️ Rate limit hit on iteration {iteration}")
+                conversation_history.append({
+                    "step": iteration,
+                    "type": "error",
+                    "content": f"Rate limit error: {str(e)}"
+                })
+                break
+                
             except Exception as e:
-                reasoning_trace.append(f"[Error] {str(e)}")
+                print(f"❌ Error in iteration {iteration}: {e}")
+                conversation_history.append({
+                    "step": iteration,
+                    "type": "error",
+                    "content": str(e)
+                })
                 break
         
-        # If no paths found through LLM, fallback to rule-based
-        if not paths:
-            fallback = await self._run_rule_based_agent(context, cart)
-            paths = fallback.paths
-            reasoning_trace.extend(fallback.reasoning_trace)
+        # If no paths found through LLM, try rule-based fallback
+        if not paths_found:
+            if self.verbose:
+                print("⚠️ No paths from LLM, trying rule-based fallback")
+            fallback = await self._run_rule_based_agent(product, user_afig, current_cart, budget, gap)
+            paths_found = fallback.paths
+            conversation_history.extend(fallback.conversation)
         
-        status = 'paths_found' if paths else 'no_paths'
+        # Rank and deduplicate paths
+        ranked_paths = self._rank_paths(paths_found, user_afig)
         
-        return AgentResult(
-            status=status,
-            gap=context['gap'],
-            paths=paths,
-            reasoning_trace=reasoning_trace,
-            iterations=iterations
-        )
-    
-    async def _run_rule_based_agent(self, context: Dict, cart: List[Dict]) -> AgentResult:
-        """Fallback rule-based agent when LLM is unavailable."""
-        reasoning_trace = ["Using rule-based fallback agent"]
-        paths = []
-        gap = context['gap']
-        product = context['product']
+        status = "paths_found" if ranked_paths else "no_solutions"
         
-        # Strategy 1: Check refurbished alternatives
-        refurb_result = self.tools.find_refurb_alternatives(product, max_price=context['budget'] - context['cart_total'])
-        if refurb_result.success:
-            best_alt = refurb_result.data.get('alternatives', [{}])[0]
-            if best_alt.get('savings', 0) >= gap * 0.5:  # Covers at least half the gap
-                paths.append(AffordabilityPath(
-                    viable=True,
-                    path_type=PathType.REFURBISHED,
-                    summary=f"Get {best_alt.get('type', 'refurbished')} version and save ${best_alt.get('savings', 0):.2f}",
-                    action=f"Choose the {best_alt.get('type', 'refurbished')} option at ${best_alt.get('price', 0):.2f}",
-                    trade_off=best_alt.get('condition_notes', 'May have minor wear'),
-                    savings=best_alt.get('savings', 0),
-                    details=best_alt
-                ))
-                reasoning_trace.append(f"Found refurb alternative saving ${best_alt.get('savings', 0):.2f}")
-        
-        # Strategy 2: Check cart removals
-        if cart:
-            cart_result = self.tools.check_cart_removals(cart, context['budget'], context['product_price'])
-            if cart_result.success and cart_result.data.get('suggestions'):
-                best_removal = cart_result.data['suggestions'][0]
-                if best_removal.get('closes_gap') or best_removal.get('price', 0) >= gap * 0.7:
-                    paths.append(AffordabilityPath(
-                        viable=True,
-                        path_type=PathType.CART_REMOVAL,
-                        summary=f"Remove {best_removal['item'].get('name', 'item')} to free up ${best_removal.get('price', 0):.2f}",
-                        action="Remove the suggested item from your cart",
-                        trade_off=f"Lose utility of {best_removal['item'].get('name', 'item')}",
-                        savings=best_removal.get('price', 0),
-                        details=best_removal
-                    ))
-                    reasoning_trace.append(f"Found cart item to remove: ${best_removal.get('price', 0):.2f}")
-        
-        # Strategy 3: Financing options
-        if context.get('timeline') != 'urgent':
-            financing_result = self.tools.suggest_financing(context['product_price'])
-            if financing_result.success:
-                best_option = financing_result.data.get('recommended', {})
-                if best_option.get('extra_cost', 999) < gap * 0.2:  # Low extra cost
-                    paths.append(AffordabilityPath(
-                        viable=True,
-                        path_type=PathType.FINANCING,
-                        summary=f"Pay ${best_option.get('monthly_payment', 0):.2f}/month via {best_option.get('provider', 'installments')}",
-                        action=f"Choose {best_option.get('provider', 'financing')} at checkout",
-                        trade_off=f"Total cost: ${best_option.get('total_cost', 0):.2f} ({best_option.get('apr', 'varies')} APR)",
-                        savings=0,  # Not really savings, but spreads cost
-                        details=best_option
-                    ))
-                    reasoning_trace.append(f"Found financing option: {best_option.get('provider')}")
-        
-        # Strategy 4: Wait for sale
-        if context.get('timeline') == 'flexible':
-            sale_result = self.tools.check_upcoming_sales(product, days_willing_to_wait=30)
-            if sale_result.success:
-                best_sale = sale_result.data.get('best_option', {})
-                if best_sale.get('potential_savings', 0) >= gap * 0.5:
-                    paths.append(AffordabilityPath(
-                        viable=True,
-                        path_type=PathType.WAIT_FOR_SALE,
-                        summary=f"Wait {best_sale.get('days_until', 0)} days for {best_sale.get('event', 'sale')}",
-                        action=f"Set alert for {best_sale.get('event', 'upcoming sale')}",
-                        trade_off=f"Wait {best_sale.get('days_until', 0)} days, savings not guaranteed",
-                        savings=best_sale.get('potential_savings', 0),
-                        details=best_sale
-                    ))
-                    reasoning_trace.append(f"Found upcoming sale: {best_sale.get('event')}")
-        
-        # Sort paths by savings (descending)
-        paths.sort(key=lambda p: p.savings, reverse=True)
-        paths = paths[:3]  # Keep top 3
-        
-        status = 'paths_found' if paths else 'no_paths'
+        if self.verbose:
+            print(f"\n{'='*60}")
+            print(f"✅ AGENT SUMMARY: {len(ranked_paths)} paths in {iteration} steps")
+            for i, path in enumerate(ranked_paths, 1):
+                print(f"   {i}. {path['summary']}")
+            print(f"{'='*60}\n")
         
         return AgentResult(
             status=status,
             gap=gap,
-            paths=paths,
-            reasoning_trace=reasoning_trace,
-            iterations=1
+            paths=ranked_paths[:3],
+            agent_steps=iteration,
+            conversation=conversation_history,
+            token_usage=self.token_usage
         )
     
-    def _execute_tool_from_response(self, response: str, context: Dict, cart: List[Dict]) -> ToolResult:
-        """Parse and execute tool from LLM response."""
+    def _build_system_prompt(
+        self,
+        product: Dict,
+        gap: float,
+        budget: float,
+        user_afig: Dict
+    ) -> str:
+        """
+        Build an effective system prompt for the agent.
+        
+        The prompt includes:
+        - Clear task description
+        - Situation context
+        - User profile
+        - Available tools and their purposes
+        - Strategy guidance
+        - Rules and constraints
+        """
+        income_tier = user_afig.get('income_tier', 'unknown')
+        risk_tolerance = user_afig.get('risk_tolerance', 0.5)
+        brand_sensitivity = user_afig.get('brand_sensitivity', 0.5)
+        
+        return f"""You are a Budget Pathfinder Agent. Your job is to help users afford products they want but currently cannot afford.
+
+SITUATION:
+- User wants: {product.get('name', 'Unknown Product')} (${product.get('price', 0):.0f})
+- User's budget: ${budget:.0f}
+- Budget shortfall: ${gap:.0f}
+- Product category: {product.get('category', 'unknown')}
+
+USER PROFILE:
+- Income tier: {income_tier}
+- Risk tolerance: {'high' if risk_tolerance > 0.7 else 'moderate' if risk_tolerance > 0.3 else 'low'}
+- Brand sensitivity: {'high' if brand_sensitivity > 0.6 else 'moderate'}
+
+YOUR TASK:
+Find 3 creative, realistic ways for the user to afford this product. Think step-by-step and use the available tools strategically.
+
+AVAILABLE TOOLS:
+1. check_cart_removals - Find items in cart that could be removed to free budget
+2. check_income_projection - Calculate weeks to save based on income tier
+3. check_installment_plans - Find payment plan options to spread cost
+4. check_refurbished_alternatives - Search for cheaper refurbished/open-box options
+5. check_bundle_swaps - Replace expensive cart items with budget alternatives
+
+STRATEGY:
+- Start with quick wins (cart removals, refurbished alternatives)
+- Then explore time-based solutions (saving, installments)
+- Combine approaches if needed (remove item + wait 2 weeks)
+- Prioritize paths that work TODAY over long waits
+- Consider user's income tier when suggesting solutions
+
+RULES:
+1. Each path must be ACTIONABLE and REALISTIC
+2. Prefer creative solutions over just "wait and save"
+3. Stop when you find 3 viable paths
+4. Be concise - think in 1-2 sentences, not paragraphs
+5. NEVER suggest illegal, unethical, or predatory lending
+6. Always call tools to get real data, don't make up numbers
+
+Start by analyzing the situation and deciding which tool to use first."""
+    
+    def _get_tool_definitions(self) -> List[Dict]:
+        """
+        Return OpenAI-compatible function definitions for Groq.
+        These define the tools available to the agent.
+        """
+        return self.tools_instance.get_tool_definitions()
+    
+    async def _call_llm(self, messages: List[Dict]) -> Any:
+        """
+        Call Groq API with function calling enabled.
+        
+        Args:
+            messages: Conversation history
+            
+        Returns:
+            Groq API response
+        """
+        response = await self._client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            tools=self._get_tool_definitions(),
+            tool_choice="auto",  # Let agent decide
+            max_tokens=800,
+            temperature=0.7  # Some creativity but not random
+        )
+        
+        return response
+    
+    async def _call_llm_with_retry(
+        self,
+        messages: List[Dict],
+        max_retries: int = 2
+    ) -> Any:
+        """
+        Call LLM with exponential backoff for rate limits.
+        
+        Args:
+            messages: Conversation history
+            max_retries: Maximum retry attempts
+            
+        Returns:
+            Groq API response
+            
+        Raises:
+            RateLimitError: If rate limit exceeded after all retries
+        """
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self._call_llm(messages)
+                return response
+            
+            except RateLimitError as e:
+                if attempt < max_retries:
+                    wait_time = 2 ** attempt  # 1s, 2s
+                    print(f"⚠️ Rate limit hit, waiting {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    print(f"❌ Rate limit exceeded after {max_retries} retries")
+                    raise
+            
+            except Exception as e:
+                print(f"❌ LLM call failed: {e}")
+                raise
+    
+    async def _execute_tool(
+        self,
+        tool_name: str,
+        args: Dict,
+        user_afig: Dict,
+        current_cart: List[Dict],
+        budget: float,
+        gap: float
+    ) -> Dict[str, Any]:
+        """
+        Route tool execution to AgentTools instance.
+        
+        Args:
+            tool_name: Name of the tool to execute
+            args: Tool arguments from LLM
+            user_afig: User context
+            current_cart: Current cart items
+            budget: User's budget
+            gap: Budget shortfall
+            
+        Returns:
+            Tool result dictionary
+        """
+        tool_methods = {
+            "check_cart_removals": self.tools_instance.check_cart_removals,
+            "check_income_projection": self.tools_instance.check_income_projection,
+            "check_installment_plans": self.tools_instance.check_installment_plans,
+            "check_refurbished_alternatives": self.tools_instance.check_refurbished_alternatives,
+            "check_bundle_swaps": self.tools_instance.check_bundle_swaps
+        }
+        
+        method = tool_methods.get(tool_name)
+        if not method:
+            return {
+                "viable": False,
+                "error": f"Unknown tool: {tool_name}",
+                "summary": "Tool not found"
+            }
+        
         try:
-            # Extract action and input
-            lines = response.split('\n')
-            action = None
-            action_input = {}
+            # Call tool with full context
+            result = await method(
+                args=args,
+                user_afig=user_afig,
+                current_cart=current_cart,
+                budget=budget,
+                gap=gap
+            )
             
-            for line in lines:
-                if line.startswith('ACTION:'):
-                    action = line.replace('ACTION:', '').strip().lower()
-                elif line.startswith('ACTION_INPUT:'):
-                    input_str = line.replace('ACTION_INPUT:', '').strip()
-                    try:
-                        action_input = json.loads(input_str)
-                    except:
-                        action_input = {}
+            # Validate result format
+            required_fields = ["viable", "summary"]
+            for field in required_fields:
+                if field not in result:
+                    result[field] = False if field == "viable" else "Unknown"
             
-            if not action:
-                return ToolResult(False, {}, "Could not parse action from response")
-            
-            # Execute the appropriate tool
-            if action == 'check_cart_removals':
-                return self.tools.check_cart_removals(
-                    cart, 
-                    context['budget'], 
-                    context['product_price']
-                )
-            elif action == 'find_refurb_alternatives':
-                return self.tools.find_refurb_alternatives(
-                    context['product'],
-                    max_price=context['budget'] - context['cart_total']
-                )
-            elif action == 'suggest_financing':
-                return self.tools.suggest_financing(
-                    context['product_price'],
-                    user_context={'credit_score_tier': 'good'}
-                )
-            elif action == 'find_bundle_discounts':
-                return self.tools.find_bundle_discounts(
-                    cart + [context['product']],
-                    context['product'].get('category', '')
-                )
-            elif action == 'check_upcoming_sales':
-                days = action_input.get('days_willing_to_wait', 30)
-                return self.tools.check_upcoming_sales(context['product'], days)
-            else:
-                return ToolResult(False, {}, f"Unknown tool: {action}")
-                
+            return result
+        
         except Exception as e:
-            return ToolResult(False, {}, f"Tool execution error: {str(e)}")
+            print(f"❌ Tool execution error: {e}")
+            return {
+                "viable": False,
+                "error": str(e),
+                "summary": f"Tool '{tool_name}' failed: {str(e)[:100]}"
+            }
     
-    def _parse_paths(self, answer_str: str, context: Dict) -> List[AffordabilityPath]:
-        """Parse paths from LLM answer string."""
-        paths = []
+    async def _run_rule_based_agent(
+        self,
+        product: Dict,
+        user_afig: Dict,
+        current_cart: List[Dict],
+        budget: float,
+        gap: float
+    ) -> AgentResult:
+        """
+        Fallback rule-based agent when LLM is unavailable.
         
-        try:
-            # Try to parse as JSON
-            data = json.loads(answer_str)
-            if isinstance(data, list):
-                for item in data[:3]:
-                    paths.append(AffordabilityPath(
-                        viable=item.get('viable', True),
-                        path_type=PathType(item.get('path_type', 'no_path')),
-                        summary=item.get('summary', ''),
-                        action=item.get('action', ''),
-                        trade_off=item.get('trade_off', ''),
-                        savings=item.get('savings', 0)
-                    ))
-            elif isinstance(data, dict) and 'paths' in data:
-                for item in data['paths'][:3]:
-                    paths.append(AffordabilityPath(
-                        viable=item.get('viable', True),
-                        path_type=PathType(item.get('path_type', 'no_path')),
-                        summary=item.get('summary', ''),
-                        action=item.get('action', ''),
-                        trade_off=item.get('trade_off', ''),
-                        savings=item.get('savings', 0)
-                    ))
-        except:
-            # If JSON parsing fails, return empty list
-            pass
+        Systematically tries each tool and collects viable paths.
+        """
+        conversation_history = [{"step": 1, "type": "think", "content": "Using rule-based fallback agent"}]
+        paths_found = []
         
-        return paths
+        # Strategy 1: Check cart removals (if cart has items)
+        if current_cart:
+            result = await self.tools_instance.check_cart_removals(
+                args={"min_savings_needed": gap * 0.5},
+                user_afig=user_afig,
+                current_cart=current_cart,
+                budget=budget,
+                gap=gap
+            )
+            conversation_history.append({
+                "step": 1,
+                "type": "action",
+                "tool": "check_cart_removals",
+                "result": result
+            })
+            if result.get("viable"):
+                paths_found.append(result)
+        
+        # Strategy 2: Check refurbished alternatives
+        category = product.get("category", "laptops")
+        result = await self.tools_instance.check_refurbished_alternatives(
+            args={"product_category": category, "max_price": budget},
+            user_afig=user_afig,
+            current_cart=current_cart,
+            budget=budget,
+            gap=gap
+        )
+        conversation_history.append({
+            "step": 2,
+            "type": "action",
+            "tool": "check_refurbished_alternatives",
+            "result": result
+        })
+        if result.get("viable"):
+            paths_found.append(result)
+        
+        # Strategy 3: Check installment plans
+        price = product.get("price", 0)
+        result = await self.tools_instance.check_installment_plans(
+            args={"product_price": price},
+            user_afig=user_afig,
+            budget=budget,
+            gap=gap
+        )
+        conversation_history.append({
+            "step": 3,
+            "type": "action",
+            "tool": "check_installment_plans",
+            "result": result
+        })
+        if result.get("viable"):
+            paths_found.append(result)
+        
+        # Strategy 4: Check income projection (save and wait)
+        result = await self.tools_instance.check_income_projection(
+            args={"target_amount": gap},
+            user_afig=user_afig,
+            budget=budget,
+            gap=gap
+        )
+        conversation_history.append({
+            "step": 4,
+            "type": "action",
+            "tool": "check_income_projection",
+            "result": result
+        })
+        if result.get("viable"):
+            paths_found.append(result)
+        
+        # Strategy 5: Check bundle swaps (if cart has items)
+        if current_cart:
+            result = await self.tools_instance.check_bundle_swaps(
+                args={"savings_target": gap * 0.7},
+                user_afig=user_afig,
+                current_cart=current_cart,
+                budget=budget,
+                gap=gap
+            )
+            conversation_history.append({
+                "step": 5,
+                "type": "action",
+                "tool": "check_bundle_swaps",
+                "result": result
+            })
+            if result.get("viable"):
+                paths_found.append(result)
+        
+        # Rank and return
+        ranked_paths = self._rank_paths(paths_found, user_afig)
+        status = "paths_found" if ranked_paths else "no_solutions"
+        
+        return AgentResult(
+            status=status,
+            gap=gap,
+            paths=ranked_paths[:3],
+            agent_steps=len([c for c in conversation_history if c["type"] == "action"]),
+            conversation=conversation_history
+        )
+    
+    def _rank_paths(self, paths: List[Dict], user_afig: Dict) -> List[Dict]:
+        """
+        Rank paths by desirability for the user.
+        
+        Considers:
+        - Path type (immediate solutions preferred)
+        - Savings amount
+        - User's risk tolerance
+        - Wait time
+        """
+        if not paths:
+            return []
+        
+        def score_path(path: Dict) -> float:
+            score = 0.0
+            path_type = path.get("path_type", "")
+            
+            # Base scores by path type (prefer immediate solutions)
+            type_scores = {
+                "refurbished": 10,
+                "cart_removal": 8,
+                "bundle_swap": 7,
+                "installment": 5,
+                "save_and_wait": 3
+            }
+            score += type_scores.get(path_type, 0)
+            
+            # Bonus for savings
+            savings = path.get("savings", 0)
+            score += min(savings / 100, 5)  # Up to 5 points for savings
+            
+            # Penalize long waits
+            if path_type == "save_and_wait":
+                weeks = path.get("weeks", 0)
+                score -= min(weeks, 5)  # Penalty for waiting
+            
+            # Consider user risk tolerance for installments
+            risk = user_afig.get("risk_tolerance", 0.5)
+            if path_type == "installment":
+                score += risk * 3  # Risk-tolerant users like installments
+            
+            return score
+        
+        # Deduplicate by path type
+        seen_types = set()
+        unique_paths = []
+        for path in paths:
+            ptype = path.get("path_type", "unknown")
+            if ptype not in seen_types:
+                seen_types.add(ptype)
+                unique_paths.append(path)
+        
+        # Sort by score
+        ranked = sorted(unique_paths, key=score_path, reverse=True)
+        return ranked
+    
+    def get_formatted_trace(self, conversation: List[Dict]) -> str:
+        """
+        Format conversation trace for UI display.
+        
+        Args:
+            conversation: List of conversation entries
+            
+        Returns:
+            Formatted string for display
+        """
+        trace_lines = []
+        for entry in conversation:
+            step = entry.get("step", 0)
+            entry_type = entry.get("type", "")
+            
+            if entry_type == "think":
+                content = entry.get("content", "")[:100]
+                trace_lines.append(f"🤔 Step {step}: {content}...")
+            
+            elif entry_type == "action":
+                tool = entry.get("tool", "unknown")
+                result = entry.get("result", {})
+                summary = result.get("summary", "No summary")
+                trace_lines.append(f"🔧 Step {step}: Using {tool}")
+                trace_lines.append(f"📊 Result: {summary}")
+            
+            elif entry_type == "error":
+                content = entry.get("content", "")
+                trace_lines.append(f"❌ Step {step}: Error - {content}")
+        
+        return "\n".join(trace_lines)
+    
+    def get_token_usage(self) -> Dict[str, Any]:
+        """
+        Get token usage statistics.
+        
+        Returns:
+            Dict with token counts and estimated cost
+        """
+        total = self.token_usage["prompt"] + self.token_usage["completion"]
+        return {
+            "total_tokens": total,
+            "prompt_tokens": self.token_usage["prompt"],
+            "completion_tokens": self.token_usage["completion"],
+            "estimated_cost": total * 0.00001  # Rough estimate
+        }
 
 
-# Async test helper
+# =============================================================================
+# TEST RUNNER
+# =============================================================================
+
 async def _test_agent():
-    print("🧪 Testing Budget Pathfinder Agent...")
+    """Test the Budget Pathfinder Agent with a realistic scenario."""
+    print("🧪 Testing Budget Pathfinder Agent...\n")
     
-    agent = BudgetPathfinderAgent()
+    agent = BudgetPathfinderAgent(verbose=True)
     
     product = {
-        'id': 'prod_001',
-        'name': 'ASUS ROG Laptop RTX 4070',
-        'category': 'laptops',
-        'brand': 'ASUS',
-        'price': 1499
+        "name": "MacBook Pro M3",
+        "price": 2499,
+        "category": "laptops"
     }
-    
-    cart = [
-        {'id': 'cart_1', 'name': 'Gaming Mouse', 'price': 89, 'utility': 0.7},
-        {'id': 'cart_2', 'name': 'Mechanical Keyboard', 'price': 149, 'utility': 0.8},
-    ]
     
     user_afig = {
-        'archetype': 'value_balanced',
-        'timeline': 'flexible',
-        'risk_tolerance': 0.5
+        "income_tier": "medium",
+        "risk_tolerance": 0.6,
+        "brand_sensitivity": 0.5
     }
     
-    budget = 1200
+    current_cart = [
+        {"name": "Logitech MX Master 3", "price": 89, "category": "mice", "optional": True},
+        {"name": "USB-C Hub", "price": 45, "category": "accessories"}
+    ]
     
-    print(f"\n📊 Test scenario:")
+    budget = 1500
+    
+    print(f"📊 Test Scenario:")
     print(f"   Product: {product['name']} (${product['price']})")
-    print(f"   Cart total: ${sum(c['price'] for c in cart)}")
     print(f"   Budget: ${budget}")
-    print(f"   Gap: ${product['price'] + sum(c['price'] for c in cart) - budget}")
+    print(f"   Gap: ${product['price'] - budget}")
+    print(f"   Cart items: {len(current_cart)}")
     
-    result = await agent.find_affordability_paths(product, user_afig, cart, budget)
+    result = await agent.find_affordability_paths(
+        product=product,
+        user_afig=user_afig,
+        current_cart=current_cart,
+        budget=budget
+    )
     
     print(f"\n📊 Result: {result['status']}")
-    print(f"   Gap: ${result['gap']:.2f}")
+    print(f"   Gap: ${result['gap']:.0f}")
     print(f"   Paths found: {len(result['paths'])}")
+    print(f"   Agent steps: {result['agent_steps']}")
     
     for i, path in enumerate(result['paths'], 1):
-        print(f"\n   Path {i}: {path['path_type']}")
+        print(f"\n   Path {i}: {path['path_type'].upper()}")
         print(f"      Summary: {path['summary']}")
         print(f"      Action: {path['action']}")
         print(f"      Trade-off: {path['trade_off']}")
-        if path['savings']:
-            print(f"      Savings: ${path['savings']:.2f}")
     
     print("\n✅ Agent test complete!")
 

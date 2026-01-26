@@ -161,6 +161,9 @@ class QdrantSearch:
         """
         Search with multiple constraint filters.
         
+        Uses vector-only search with Python-side filtering since Qdrant
+        may not have payload indexes configured.
+        
         Args:
             query_vector: Embedding vector
             max_price: Maximum price filter
@@ -176,65 +179,60 @@ class QdrantSearch:
         Returns:
             Filtered search results
         """
-        filters = {"must": []}
+        # Get more results than needed for Python-side filtering
+        search_limit = min(limit * 5, 100)
+        results = self.search(query_vector, limit=search_limit, filters=None)
         
-        # Price range
-        if max_price is not None or min_price is not None:
-            price_filter = {"key": "price", "range": {}}
-            if max_price is not None:
-                price_filter["range"]["lte"] = max_price
-            if min_price is not None:
-                price_filter["range"]["gte"] = min_price
-            filters["must"].append(price_filter)
+        # Apply Python-side filters
+        filtered = []
+        for r in results:
+            # Price filter
+            if max_price is not None and r.price > max_price:
+                continue
+            if min_price is not None and r.price < min_price:
+                continue
+                
+            # Category filter (case-insensitive partial match)
+            if category:
+                r_cat = r.category.lower() if r.category else ""
+                if category.lower() not in r_cat and r_cat not in category.lower():
+                    continue
+                    
+            # Multiple categories (OR) - match any
+            if categories:
+                r_cat = r.category.lower() if r.category else ""
+                matched = any(cat.lower() in r_cat or r_cat in cat.lower() for cat in categories)
+                if not matched:
+                    continue
+                    
+            # Brand filter (OR) - match any
+            if brands:
+                r_brand = r.brand.lower() if r.brand else ""
+                matched = any(brand.lower() in r_brand or r_brand in brand.lower() for brand in brands)
+                if not matched:
+                    continue
+                    
+            # In stock filter
+            if in_stock_only and not r.in_stock:
+                continue
+                
+            # Condition filter
+            if conditions:
+                r_cond = r.condition.lower() if r.condition else "new"
+                if not any(cond.lower() in r_cond or r_cond in cond.lower() for cond in conditions):
+                    continue
+                    
+            # Rating filter
+            if min_rating is not None and r.rating < min_rating:
+                continue
+                
+            filtered.append(r)
+            
+            # Stop once we have enough
+            if len(filtered) >= limit:
+                break
         
-        # In stock
-        if in_stock_only:
-            filters["must"].append({
-                "key": "in_stock",
-                "match": {"value": True}
-            })
-        
-        # Rating
-        if min_rating is not None:
-            filters["must"].append({
-                "key": "rating",
-                "range": {"gte": min_rating}
-            })
-        
-        # Single category
-        if category:
-            filters["must"].append({
-                "key": "category",
-                "match": {"value": category}
-            })
-        
-        # Multiple categories (should)
-        if categories:
-            filters["should"] = [
-                {"key": "category", "match": {"value": cat}}
-                for cat in categories
-            ]
-        
-        # Brands
-        if brands:
-            brand_filter = {"should": [
-                {"key": "brand", "match": {"value": brand}}
-                for brand in brands
-            ]}
-            # Merge with existing
-            if "should" not in filters:
-                filters.update(brand_filter)
-        
-        # Conditions
-        if conditions:
-            condition_filter = {"should": [
-                {"key": "condition", "match": {"value": cond}}
-                for cond in conditions
-            ]}
-            if "should" not in filters:
-                filters.update(condition_filter)
-        
-        return self.search(query_vector, limit=limit, filters=filters if filters["must"] else None)
+        return filtered
     
     def _build_filter(self, filter_dict: Dict) -> Filter:
         """Build Qdrant Filter from dict."""

@@ -88,7 +88,7 @@ export default function Sidebar() {
                                 >
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm text-white/80 truncate">{item.name}</p>
-                                        <p className="text-xs text-primary-400">${item.price}</p>
+                                        <p className="text-xs text-primary-400">${item.price?.toFixed(2)}</p>
                                     </div>
                                     <button
                                         onClick={() => removeFromCart(item.product_id)}

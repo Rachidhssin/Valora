@@ -119,11 +119,11 @@ export default function ProductCard({ product, onSelect }) {
                 <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1">
                         <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                        <span className="text-sm text-white/80">{rating.toFixed(1)}</span>
+                        <span className="text-sm text-white/80">{(rating ?? 0).toFixed(1)}</span>
                     </div>
                     {rating_count > 0 && (
                         <span className="text-xs text-white/40">
-                            ({rating_count.toLocaleString()} reviews)
+                            ({(rating_count ?? 0).toLocaleString()} reviews)
                         </span>
                     )}
                 </div>
@@ -132,7 +132,7 @@ export default function ProductCard({ product, onSelect }) {
                 <div className="flex items-center justify-between">
                     <div>
                         <span className="text-lg font-bold text-white">
-                            ${price.toFixed(2)}
+                            ${(price ?? 0).toFixed(2)}
                         </span>
                     </div>
                     <BudgetFitBadge price={price} budget={budget} />
