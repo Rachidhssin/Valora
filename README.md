@@ -1,28 +1,47 @@
-# 🛒 FinBundle v3
+# 💎 Valora
 
-An adaptive, privacy-aware commerce decision engine with React frontend and FastAPI backend.
+Valora is an **AI-driven, privacy-centric commerce decision engine** that transforms the way users navigate complex purchasing decisions. Moving beyond simple keyword search, Valora employs a sophisticated **Adaptive Financial Intent Graph (AFIG)** to understand the deeper psychological and situational drivers behind every purchase.
 
-![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
-![React](https://img.shields.io/badge/React-18+-61DAFB.svg)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
-![Cost](https://img.shields.io/badge/Cost-$0-brightgreen.svg)
+By synthesizing real-time budget constraints with deeply mapped product relationships, Valora empowers users to discover optimal product bundles that don't just fit their needs—but also their financial reality.
 
-## 🏆 Key Innovations
+### 🌟 Why Valora?
+- **Intelligent Intent Reconciliation**: Leveraging a three-layer graph (Stable, Situational, and Behavioral) to predict what users *really* want, even when they can't articulate it.
+- **Dynamic Three-Path Routing**: An optimized orchestration layer that balances speed and precision, routing queries through **Fast**, **Smart**, or **Deep** processing paths based on complexity.
+- **Autonomous Budget Pathfinding**: An integrated ReAct agent that acts as a financial concierge, navigating price trade-offs and affordability tools to ensure every recommendation is viable.
+- **Privacy-Aware Architecture**: Built from the ground up to respect user data, ensuring that personalized recommendations never come at the cost of personal security.
 
-| Innovation | Description |
-|------------|-------------|
-| **AFIG** | Adaptive Financial Intent Graph with 3-layer reconciliation |
-| **Three-Path Router** | Fast (<100ms) / Smart (<300ms) / Deep (<1500ms) |
-| **Budget Pathfinder Agent** | ReAct agent with 5 affordability tools |
-| **Hybrid Bundle Optimizer** | OR-Tools CP-SAT + greedy fallback |
+## 👥 Team Members
 
-## 🚀 Quick Start
+- **Rachid Hssin**
+- **Arwa Benaoun**
+- **Maryem Besbes**
+- **Mohamed Rayen Hamed**
 
-### Backend Setup
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | React 18, Vite, Tailwind CSS, Framer Motion, Zustand |
+| **Backend** | FastAPI, Pydantic, Uvicorn, Python 3.10+ |
+| **Vector DB** | Qdrant Cloud |
+| **LLM** | Groq (Llama-3.1-8B) |
+| **Optimizer** | OR-Tools CP-SAT |
+
+## 🚀 Setup & Run Instructions
+
+### Prerequisites
+- Python 3.10+
+- Node.js & npm
+- [Groq API Key](https://console.groq.com/)
+- [Qdrant Cloud Account](https://cloud.qdrant.io/)
+
+### 1. Backend Setup
 ```bash
-cd finbundle
+# Clone the repository
+# git clone <repo-url>
+cd Valora
 
-# Create virtual environment
+# Create and activate virtual environment
 python -m venv venv
 venv\Scripts\activate  # Windows
 # source venv/bin/activate  # Linux/Mac
@@ -31,102 +50,32 @@ venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 
 # Configure environment
-copy .env.example .env
-# Add your API keys to .env
+# Copy .env.example to .env and add your API keys
+# cp .env.example .env (Linux/Mac)
+# copy .env.example .env (Windows)
+```
 
-# Generate data
-python scripts/generate_mock_data.py
-python scripts/generate_embeddings.py
-python scripts/upload_to_qdrant.py
-
-# Start API server
+### 3. Start Backend API
+```bash
+# Run the FastAPI server
 cd api
 uvicorn main:app --reload --port 8000
 ```
 
-### Frontend Setup
+### 4. Frontend Setup
 ```bash
-cd frontend
+cd ../frontend
 
 # Install dependencies
 npm install
 
-# Start dev server
+# Start development server
 npm run dev
 ```
 
-Open http://localhost:5173 in your browser.
+The application will be available at `http://localhost:5173`.
 
-## 📊 Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     React Frontend                           │
-│   ┌─────────┐  ┌────────────┐  ┌─────────────────────────┐  │
-│   │ Sidebar │  │ SearchBar  │  │    SearchResults        │  │
-│   │ • Cart  │  │            │  │ • ProductGrid           │  │
-│   │ • Budget│  └────────────┘  │ • BundleItems           │  │
-│   │ • Metrics│                  │ • AgentPaths            │  │
-│   └─────────┘                   └─────────────────────────┘  │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ API Calls
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    FastAPI Backend                           │
-│   POST /api/search  │  GET /api/user/{id}/profile           │
-│   GET /api/categories  │  POST /api/user/{id}/signal        │
-└──────────────────────────┬──────────────────────────────────┘
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   FinBundle Engine                           │
-│   AFIG → Router → Qdrant → Feasibility → Optimizer → Agent  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 📁 Project Structure
-
-```
-finbundle/
-├── api/                    # FastAPI backend
-│   └── main.py
-├── core/                   # Core engine
-├── retrieval/              # Search & cache
-├── optimization/           # Bundle optimizer
-├── agent/                  # Budget agent
-├── explanation/            # LLM explainer
-├── frontend/               # React app
-│   ├── src/
-│   │   ├── components/     # React components
-│   │   ├── store/          # Zustand state
-│   │   ├── App.jsx
-│   │   └── index.css
-│   ├── package.json
-│   └── vite.config.js
-├── scripts/                # Data generation
-└── tests/                  # Integration tests
-```
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Frontend | React 18, Vite, Tailwind, Framer Motion, Zustand |
-| Backend | FastAPI, Pydantic, Uvicorn |
-| Vector DB | Qdrant Cloud |
-| LLM | Groq Llama-3.1-8B |
-| Optimizer | OR-Tools CP-SAT |
-| Database | PostgreSQL |
-
-## 🧪 Testing
-
-```bash
-# Backend tests
-python tests/test_integration.py
-
-# Run demo scenarios
-python scripts/demo_scenarios.py
-```
 
 ## 📄 License
 
-MIT License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
