@@ -1,6 +1,6 @@
 # FinBundle Dependencies
 # Vector DB & Embeddings
-qdrant-client>=1.7.0
+qdrant-client>=1.13.0  # ACORN filtered search + text_any support
 sentence-transformers>=2.2.0
 
 # LLM

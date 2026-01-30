@@ -14,12 +14,23 @@ load_dotenv()
 
 
 class DecimalEncoder(json.JSONEncoder):
-    """Custom JSON encoder that handles Decimal and datetime types."""
+    """Custom JSON encoder that handles Decimal, datetime, and numpy types."""
     def default(self, obj):
         if isinstance(obj, Decimal):
             return float(obj)
         if isinstance(obj, datetime):
             return obj.isoformat()
+        # Handle numpy types
+        try:
+            import numpy as np
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            if isinstance(obj, (np.float32, np.float64)):
+                return float(obj)
+            if isinstance(obj, (np.int32, np.int64)):
+                return int(obj)
+        except ImportError:
+            pass
         return super().default(obj)
 
 

@@ -310,6 +310,15 @@ class AFIG:
         """
         Update behavioral layer with real-time signal.
         Designed to handle window shopping without corrupting profile.
+        
+        Supports:
+        - click: Product click
+        - price_jump: Price range exploration
+        - dwell: Time spent on product/category
+        - search: Search query
+        - cart_action: Add/remove from cart
+        - swap: Bundle item swap (strong signal)
+        - bundle_optimize: User requested optimization
         """
         signal_type = signal.get('type', '')
         
@@ -323,6 +332,13 @@ class AFIG:
             })
             # Keep last 50 clicks
             self.behavioral.recent_clicks = self.behavioral.recent_clicks[-50:]
+            
+            # Update category preferences based on clicks (micro-learning)
+            category = product.get('category', '')
+            if category:
+                current = self.stable.category_preferences.get(category, 0.5)
+                # Very small increment per click - accumulates over time
+                self.stable.category_preferences[category] = min(1.0, current + 0.01)
         
         elif signal_type == 'price_jump':
             delta = signal.get('delta', 0)
@@ -334,7 +350,13 @@ class AFIG:
             dwell_time = signal.get('seconds', 0)
             if category:
                 current = self.behavioral.dwell_times.get(category, 0)
-                self.behavioral.dwell_times[category] = (current + dwell_time) / 2
+                # Exponential moving average for dwell times
+                self.behavioral.dwell_times[category] = 0.7 * current + 0.3 * dwell_time
+                
+                # Long dwell time (>10s) is interest signal
+                if dwell_time > 10:
+                    current_pref = self.stable.category_preferences.get(category, 0.5)
+                    self.stable.category_preferences[category] = min(1.0, current_pref + 0.03)
         
         elif signal_type == 'search':
             query = signal.get('query', '')
@@ -350,6 +372,51 @@ class AFIG:
             }
             self.behavioral.cart_actions.append(action)
             self.behavioral.cart_actions = self.behavioral.cart_actions[-30:]
+            
+            # Cart add is strong signal - increase category preference
+            if signal.get('action') == 'add':
+                # Try to infer category from recent clicks
+                for click in reversed(self.behavioral.recent_clicks):
+                    if click.get('product_id') == signal.get('product_id'):
+                        category = click.get('category', '')
+                        if category:
+                            current = self.stable.category_preferences.get(category, 0.5)
+                            self.stable.category_preferences[category] = min(1.0, current + 0.05)
+                        break
+        
+        elif signal_type == 'swap':
+            # User swapped item in bundle - STRONG learning signal
+            old_product_id = signal.get('old_product_id')
+            new_product_id = signal.get('new_product_id')
+            new_price = signal.get('new_price', 0)
+            
+            # Track swap pattern
+            if not hasattr(self.behavioral, 'swaps'):
+                self.behavioral.swaps = []
+            self.behavioral.swaps = getattr(self.behavioral, 'swaps', [])
+            self.behavioral.swaps.append({
+                'old': old_product_id,
+                'new': new_product_id,
+                'price': new_price,
+                'timestamp': datetime.now().isoformat()
+            })
+            
+            # Track price direction for sensitivity learning
+            for click in reversed(self.behavioral.recent_clicks):
+                if click.get('product_id') == old_product_id:
+                    old_price = click.get('price', 0)
+                    if old_price > 0 and new_price > 0:
+                        delta = new_price - old_price
+                        self.behavioral.price_jumps.append(delta)
+                    break
+        
+        elif signal_type == 'bundle_optimize':
+            # Track that user requested optimization
+            categories = signal.get('categories_suggested', [])
+            # This shows interest in completing a setup
+            for cat in categories:
+                current = self.stable.category_preferences.get(cat, 0.5)
+                self.stable.category_preferences[cat] = min(1.0, current + 0.02)
         
         self.behavioral.last_updated = datetime.now().isoformat()
         
@@ -357,7 +424,8 @@ class AFIG:
         signal_count = (
             len(self.behavioral.recent_clicks) +
             len(self.behavioral.price_jumps) +
-            len(self.behavioral.cart_actions)
+            len(self.behavioral.cart_actions) +
+            len(getattr(self.behavioral, 'swaps', []))
         )
         self.behavioral.confidence = min(0.8, 0.1 + signal_count * 0.02)
         

@@ -211,16 +211,16 @@ class BundleOptimizer:
         # Constraint: max items
         model.Add(sum(x) <= max_items)
         
-        # Constraint: at most one item per single-item category
+        # Constraint: at most one item per category (prevent duplicate PCs, monitors, etc.)
         category_to_indices: Dict[str, List[int]] = {}
         for i, p in enumerate(products):
             if p.category not in category_to_indices:
                 category_to_indices[p.category] = []
             category_to_indices[p.category].append(i)
         
+        # Apply constraint to ALL categories (no duplicates allowed)
         for cat, indices in category_to_indices.items():
-            if cat in self.SINGLE_ITEM_CATEGORIES:
-                model.Add(sum(x[i] for i in indices) <= 1)
+            model.Add(sum(x[i] for i in indices) <= 1)
         
         # Constraint: required categories (if specified)
         if required_categories:
@@ -294,49 +294,123 @@ class BundleOptimizer:
                          required_categories: Optional[List[str]],
                          max_items: int) -> OptimizationResult:
         """
-        Fast greedy optimization with value-density ranking.
+        Fast greedy optimization prioritizing category coverage and QUALITY.
+        
+        Strategy:
+        1. Pick ONE quality item per complementary category (no duplicates)
+        2. Prioritize well-rated, mid-to-high priced items over cheap accessories
+        
+        Note: selected_categories dict ensures only one product per category.
         """
         start_time = time.time()
-        
-        # Sort by utility/price ratio (value density)
-        sorted_products = sorted(
-            products,
-            key=lambda p: p.utility / max(p.price, 1),
-            reverse=True
-        )
         
         selected = []
         remaining_budget = budget
         selected_categories: Dict[str, int] = {}
+        used_product_ids = set()
         
-        # First pass: satisfy required categories
+        # Minimum price threshold - filter out very cheap accessories
+        MIN_QUALITY_PRICE = 25.0  # Items under $25 are likely low-quality accessories
+        
+        # Group products by category (normalized to lowercase)
+        category_products: Dict[str, List[Product]] = {}
+        for p in products:
+            cat_key = p.category.lower().strip()
+            if cat_key not in category_products:
+                category_products[cat_key] = []
+            category_products[cat_key].append(p)
+        
+        # Normalize required categories
         if required_categories:
-            for cat in required_categories:
-                cat_products = [p for p in sorted_products 
-                              if p.category == cat and p.price <= remaining_budget]
-                if cat_products:
-                    best = max(cat_products, key=lambda p: p.utility)
-                    selected.append(best)
-                    remaining_budget -= best.price
-                    selected_categories[cat] = selected_categories.get(cat, 0) + 1
+            required_categories = [c.lower().strip() for c in required_categories]
         
-        # Second pass: fill remaining budget greedily
-        for product in sorted_products:
+        # Define priority complementary categories (for PC setup)
+        PRIORITY_CATEGORIES = ['monitors', 'keyboards', 'mice', 'headsets', 'headphones', 
+                               'speakers', 'webcams', 'gaming']
+        
+        # First pass: Pick quality items for priority categories
+        # Allocate budget more generously per category
+        num_categories_to_fill = min(max_items, 5)  # Max 5 main items
+        per_cat_budget = remaining_budget / num_categories_to_fill
+        
+        # Sort categories by priority
+        sorted_categories = []
+        for cat in PRIORITY_CATEGORIES:
+            if cat in category_products:
+                sorted_categories.append(cat)
+        # Add other categories with products
+        for cat in category_products:
+            if cat not in sorted_categories:
+                sorted_categories.append(cat)
+        
+        for cat in sorted_categories:
             if len(selected) >= max_items:
                 break
-            if product in selected:
+            if cat in selected_categories:
                 continue
-            if product.price > remaining_budget:
+                
+            cat_products = category_products.get(cat, [])
+            
+            # Filter: affordable, quality (>$25), and within budget
+            quality_products = [
+                p for p in cat_products 
+                if p.price >= MIN_QUALITY_PRICE 
+                and p.price <= min(per_cat_budget * 1.5, remaining_budget)
+            ]
+            
+            # If no quality products, skip this category
+            if not quality_products:
                 continue
             
-            # Check single-item category constraint
-            if product.category in self.SINGLE_ITEM_CATEGORIES:
-                if selected_categories.get(product.category, 0) >= 1:
+            # Score by QUALITY (rating + utility), with price as tiebreaker for budget utilization
+            def quality_score(p):
+                # Rating matters most (0-5 scale normalized)
+                rating_score = (p.rating / 5.0 if p.rating else 0.6) * 0.5
+                # Utility score
+                utility_score = p.utility * 0.3
+                # Prefer items that cost more (indicates quality) but not over budget
+                # Use log scale so we don't overly favor expensive items
+                import math
+                price_quality = min(math.log10(p.price + 1) / 3.0, 0.2)  # Max 0.2
+                return rating_score + utility_score + price_quality
+            
+            best = max(quality_products, key=quality_score)
+            selected.append(best)
+            remaining_budget -= best.price
+            selected_categories[cat] = 1
+            used_product_ids.add(best.id)
+            
+            # Recalculate per-category budget with remaining slots
+            remaining_slots = max_items - len(selected)
+            if remaining_slots > 0:
+                per_cat_budget = remaining_budget / remaining_slots
+        
+        # Second pass: ONLY if significant budget remains, add more quality items
+        # But never add cheap filler items
+        if remaining_budget > 100 and len(selected) < max_items:
+            remaining_products = [
+                p for p in products 
+                if p.id not in used_product_ids 
+                and p.price >= MIN_QUALITY_PRICE
+                and p.price <= remaining_budget
+                and p.category.lower() not in selected_categories
+            ]
+            
+            # Sort by quality, not by value-density
+            remaining_products.sort(
+                key=lambda p: (p.rating or 3.0) * p.utility,
+                reverse=True
+            )
+            
+            for product in remaining_products:
+                if len(selected) >= max_items:
+                    break
+                if product.price > remaining_budget:
                     continue
-            
-            selected.append(product)
-            remaining_budget -= product.price
-            selected_categories[product.category] = selected_categories.get(product.category, 0) + 1
+                
+                selected.append(product)
+                remaining_budget -= product.price
+                selected_categories[product.category.lower()] = 1
         
         solve_time = (time.time() - start_time) * 1000
         

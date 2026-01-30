@@ -85,6 +85,21 @@ Respond with ONLY valid JSON (no markdown):
         'waterproof', 'durable', 'premium', 'entry-level', 'high-end'
     }
     
+    # Common product categories - direct to SMART with high confidence
+    PRODUCT_CATEGORIES = {
+        'laptop', 'laptops', 'notebook', 'computer', 'pc', 'desktop',
+        'monitor', 'monitors', 'display', 'screen', 'tv', 'tvs', 'television',
+        'keyboard', 'keyboards', 'mouse', 'mice', 'trackpad',
+        'headphones', 'headphone', 'earbuds', 'earphone', 'headset',
+        'speaker', 'speakers', 'soundbar', 'audio',
+        'webcam', 'camera', 'cameras', 'microphone', 'mic',
+        'phone', 'smartphone', 'tablet', 'tablets', 'ipad',
+        'printer', 'scanner', 'router', 'modem', 'wifi',
+        'ssd', 'hdd', 'storage', 'drive', 'usb', 'hub',
+        'charger', 'cable', 'cables', 'adapter', 'dock', 'stand',
+        'gpu', 'graphics', 'ram', 'memory', 'cpu', 'processor'
+    }
+    
     BUDGET_PATTERNS = [
         r'\$\s*(\d+)',                    # $500
         r'(\d+)\s*dollars?',              # 500 dollars
@@ -174,6 +189,7 @@ Respond with ONLY valid JSON (no markdown):
         # If regex is highly confident (obvious fast or deep), use it directly
         if regex_decision.confidence >= 0.9:
             self._route_cache[cache_key] = regex_decision
+            print(f"⚡ Regex routed '{query[:30]}' -> {regex_decision.path.value.upper()} ({regex_decision.reason})")
             return regex_decision
         
         # 3. For ambiguous queries, try LLM
@@ -265,8 +281,22 @@ Respond with ONLY valid JSON (no markdown):
                 routing_method="regex"
             )
         
+        # Check if query contains a product category FIRST (high confidence)
+        # This prevents "tvs" from matching "vs" in DEEP_KEYWORDS
+        category_hits = sum(1 for cat in self.PRODUCT_CATEGORIES if cat in words)
+        if category_hits > 0:
+            return RouteDecision(
+                path=RoutePath.SMART,
+                confidence=0.95,  # High confidence, skip LLM
+                reason="Product category search",
+                estimated_latency_ms=250,
+                complexity_score=0.5,
+                routing_method="regex"
+            )
+        
         # Check for obvious DEEP path (bundles, complex)
-        deep_hits = sum(1 for kw in self.DEEP_KEYWORDS if kw in query_lower)
+        # Use word boundary matching to avoid "tvs" matching "vs"
+        deep_hits = sum(1 for kw in self.DEEP_KEYWORDS if f' {kw} ' in f' {query_lower} ' or query_lower.startswith(f'{kw} ') or query_lower.endswith(f' {kw}') or query_lower == kw)
         has_multi_item = ' and ' in query_lower or ' with ' in query_lower
         if deep_hits > 0 or (has_multi_item and len(words) > 5):
             return RouteDecision(
@@ -283,10 +313,11 @@ Respond with ONLY valid JSON (no markdown):
         has_budget = budget is not None or self._extract_budget(query_lower) is not None
         
         if product_hits > 0 or has_budget:
-            confidence = 0.7 + (product_hits * 0.1)  # Medium confidence, might use LLM
+            # Higher confidence when we have product attributes
+            confidence = 0.85 + (product_hits * 0.05)  # Boost to 0.9+
             return RouteDecision(
                 path=RoutePath.SMART,
-                confidence=min(confidence, 0.85),
+                confidence=min(confidence, 0.95),
                 reason="Specific product search",
                 estimated_latency_ms=250,
                 complexity_score=0.5,

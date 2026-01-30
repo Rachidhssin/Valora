@@ -8,6 +8,11 @@ __pycache__/
 *.bak
 *.dat
 *.dir
+.data
+api/data/
+*.jsonl
+*.npy
+
 
 # Distribution / packaging
 .Python
