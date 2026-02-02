@@ -12,6 +12,7 @@ __pycache__/
 api/data/
 *.jsonl
 *.npy
+data/products.jsonl
 
 
 # Distribution / packaging

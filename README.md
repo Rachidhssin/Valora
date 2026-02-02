@@ -1,4 +1,4 @@
-# 🛒 Valora (FinBundle v3)
+# 🛒 Valora
 
 **Valora: An Adaptive, Privacy-Aware Financial Intent Engine for E-Commerce**
 
@@ -11,16 +11,7 @@ Valora is not just a search engine; it is a **Financial DecisionOS** for modern 
 ![OR-Tools](https://img.shields.io/badge/OR--Tools-9.7+-4285F4.svg?style=flat&logo=google&logoColor=white)
 ![Groq](https://img.shields.io/badge/Groq-Llama--3-f55036.svg?style=flat)
 
----
 
-## 👥 Team Members
-
-- **Rachid Hssin**
-- **Arwa Benaoun**
-- **Maryem Besbes**
-- **Mohamed Rayen Hamed**
-
----
 
 ## 🎯 1. Project Overview & Objectives
 
@@ -243,43 +234,109 @@ classDiagram
 
 ## 🚀 6. Setup & Installation Guide
 
-To evaluate Valora locally, follow these steps to set up the environment.
+To run Valora locally from scratch, follow these detailed steps.
 
 ### Prerequisites
-*   Python 3.10+
-*   Node.js 18+
-*   Access to a Qdrant instance
-*   Groq API Key
+*   **Python 3.10+** - [Download Python](https://www.python.org/downloads/)
+*   **Node.js 18+** - [Download Node.js](https://nodejs.org/)
+*   **Qdrant Cloud Account** - [Sign up at Qdrant](https://cloud.qdrant.io/) (free tier available)
+*   **Groq API Key** - [Get API Key](https://console.groq.com/) (for LLM-powered explanations)
 
-### Backend Initialization
+---
 
-1.  **Clone the Repository**
-    Clone the project to your local machine.
+### Step 1: Clone the Repository
 
-2.  **Environment Setup**
-    Create a virtual environment and install the dependencies listed in `requirements.txt`.
+```bash
+git clone https://github.com/your-username/Valora.git
+cd Valora
+```
 
-3.  **Configuration**
-    Create a `.env` file containing your API keys for Groq and Qdrant.
+---
 
-4.  **Data Hydration**
-    Run the included scripts to:
-    *   Generate mock product data.
-    *   Upload indices and vectors to your Qdrant instance.
+### Step 2: Backend Setup
 
-5.  **Launch Server**
-    Start the FastAPI server (configured to run on port 8123).
+#### 2.1 Create a Virtual Environment
 
-### Frontend Initialization
+```bash
+# Create virtual environment
+python -m venv venv
 
-1.  **Install Dependencies**
-    Navigate to the `frontend` directory and install the Node.js packages.
+# Activate it (Windows)
+venv\Scripts\activate
 
-2.  **Start Application**
-    Run the development server.
+# Activate it (macOS/Linux)
+source venv/bin/activate
+```
 
-3.  **Verify**
-    Open your browser to `http://localhost:5173` to interact with the application.
+#### 2.2 Install Python Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+#### 2.3 Configure Environment Variables
+
+Create a `.env` file in the project root directory with the following content:
+
+```env
+# Qdrant Configuration
+QDRANT_URL=https://your-cluster-id.cloud.qdrant.io:6333
+QDRANT_API_KEY=your-qdrant-api-key
+
+# Groq LLM Configuration
+GROQ_API_KEY=your-groq-api-key
+
+# Optional: PostgreSQL (for enhanced product data)
+DATABASE_URL=postgresql://user:password@localhost:5432/valora
+```
+
+#### 2.4 Generate Embeddings (First-Time Setup)
+
+Generate text embeddings for the product catalog:
+
+```bash
+python scripts/generate_embeddings.py
+```
+
+This will create `text_embeddings.npy` in the `data/` directory using the `all-MiniLM-L6-v2` model.
+
+#### 2.5 Upload Data to Qdrant
+
+Upload products and embeddings to your Qdrant instance:
+
+```bash
+python scripts/upload_to_qdrant.py
+```
+
+#### 2.6 Start the FastAPI Backend Server
+
+```bash
+# Run on default port 8123
+uvicorn api.main:app --host 0.0.0.0 --port 8123 --reload
+```
+
+The API will be available at `http://localhost:8123`. You can view the interactive API docs at `http://localhost:8123/docs`.
+
+---
+
+### Step 3: Frontend Setup
+
+Open a **new terminal** and navigate to the frontend directory:
+
+#### 3.1 Install Node.js Dependencies
+
+```bash
+cd frontend
+npm install
+```
+
+#### 3.2 Start the Development Server
+
+```bash
+npm run dev
+```
+
+The frontend will be available at `http://localhost:5173`.
 
 ---
 
