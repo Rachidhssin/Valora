@@ -1,0 +1,1 @@
+{"vocab_size": 1741, "embedding_dim": 128, "hidden_dim": 128, "max_length": 32, "num_classes": 3, "id2label": {"0": "fast", "1": "smart", "2": "deep"}}

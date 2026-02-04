@@ -12,6 +12,7 @@ import SearchResultsComponent from './components/SearchResults'
 import AddToCartAnimation from './components/AddToCartAnimation'
 import CartPage from './components/CartPage'
 import AnalyticsDashboard from './components/AnalyticsDashboard'
+import { useAnalytics } from './hooks/useAnalytics'
 
 // ============================================================================
 // VALORA - Sophisticated E-Commerce Discovery Platform
@@ -93,9 +94,19 @@ function App() {
 
     // Store
     const {
-        budget, setBudget, userId, cart, addToCart, removeFromCart,
+        budget, setBudget, userId, cart, addToCart: storeAddToCart, removeFromCart,
         clearCart, getCartTotal
     } = useStore()
+
+    // Analytics tracking for Success Indicators
+    const { trackImpression, trackClick, trackCartAdd, sessionId } = useAnalytics()
+
+    // Wrapped addToCart that tracks for Success Indicators
+    const addToCart = useCallback((product, isRecommended = true) => {
+        storeAddToCart(product)
+        // Track for Success Indicators
+        trackCartAdd(product.product_id, product.price, budget, isRecommended)
+    }, [storeAddToCart, trackCartAdd, budget])
 
     // Load initial products on mount
     useEffect(() => {
@@ -187,6 +198,8 @@ function App() {
         setSearchResponse(null) // Clear previous response
         setActiveView('search')
 
+        const startTime = performance.now()
+
         try {
             const response = await fetch('/api/search', {
                 method: 'POST',
@@ -203,18 +216,25 @@ function App() {
             if (!response.ok) throw new Error('Search failed')
 
             const data = await response.json()
+            const latencyMs = performance.now() - startTime
             console.log('Search response:', data) // Debug log
             setSearchResponse(data) // Store full response for path-aware rendering
             // For backwards compatibility, also set searchResults
             // For deep path, results may be empty but bundle contains the products
-            setSearchResults(data.results || (data.bundle?.bundle) || [])
+            const results = data.results || (data.bundle?.bundle) || []
+            setSearchResults(results)
+
+            // Track impressions for Success Indicators
+            if (results.length > 0) {
+                trackImpression(results, budget, query, data.path || 'smart', latencyMs, userId)
+            }
         } catch (err) {
             setError('Failed to search. Please try again.')
             console.error(err)
         } finally {
             setIsLoading(false)
         }
-    }, [budget, userId, cart])
+    }, [budget, userId, cart, trackImpression])
 
     // Optimize bundle handler
     const handleOptimize = async () => {
@@ -494,7 +514,7 @@ function App() {
                                             </button>
                                         }
                                     />
-                                    <ProductGrid products={trendingProducts} onAddToCart={addToCart} cart={cart} userId={userId} />
+                                    <ProductGrid products={trendingProducts} onAddToCart={addToCart} cart={cart} userId={userId} onTrackClick={trackClick} budget={budget} />
                                 </section>
                             )}
 
@@ -513,7 +533,7 @@ function App() {
                                             </button>
                                         }
                                     />
-                                    <ProductGrid products={recommendedProducts} onAddToCart={addToCart} cart={cart} userId={userId} />
+                                    <ProductGrid products={recommendedProducts} onAddToCart={addToCart} cart={cart} userId={userId} onTrackClick={trackClick} budget={budget} />
                                 </section>
                             )}
 
@@ -532,7 +552,7 @@ function App() {
                                             </button>
                                         }
                                     />
-                                    <ProductGrid products={discoverProducts} onAddToCart={addToCart} cart={cart} userId={userId} />
+                                    <ProductGrid products={discoverProducts} onAddToCart={addToCart} cart={cart} userId={userId} onTrackClick={trackClick} budget={budget} />
                                 </section>
                             )}
                         </motion.div>
@@ -599,6 +619,9 @@ function App() {
                             {!isLoading && searchResponse && searchResponse.path && (
                                 <SearchResultsComponent
                                     result={searchResponse}
+                                    onTrackClick={trackClick}
+                                    onAddToCart={addToCart}
+                                    budget={budget}
                                 />
                             )}
 
@@ -610,6 +633,8 @@ function App() {
                                     cart={cart}
                                     columns={4}
                                     userId={userId}
+                                    onTrackClick={trackClick}
+                                    budget={budget}
                                 />
                             )}
 
@@ -745,7 +770,7 @@ function SearchBar({ value, onChange, onSearch, isLoading }) {
 }
 
 // Product Grid Component
-function ProductGrid({ products, onAddToCart, cart, columns = 4, userId }) {
+function ProductGrid({ products, onAddToCart, cart, columns = 4, userId, onTrackClick, budget }) {
     if (!products || products.length === 0) return null
 
     const gridCols = {
@@ -769,6 +794,13 @@ function ProductGrid({ products, onAddToCart, cart, columns = 4, userId }) {
         }
     }
 
+    // Track click for Success Indicators
+    const handleProductClick = (product, index) => {
+        if (onTrackClick) {
+            onTrackClick(product.product_id, index, product.price, budget)
+        }
+    }
+
     return (
         <div className={`grid grid-cols-2 md:grid-cols-3 ${gridCols[columns] || 'lg:grid-cols-4'} gap-4 md:gap-6`}>
             {products.map((product, index) => (
@@ -779,6 +811,7 @@ function ProductGrid({ products, onAddToCart, cart, columns = 4, userId }) {
                     isInCart={cart.some(item => item.product_id === product.product_id)}
                     index={index}
                     userId={userId}
+                    onProductClick={(p) => handleProductClick(p, index)}
                 />
             ))}
         </div>

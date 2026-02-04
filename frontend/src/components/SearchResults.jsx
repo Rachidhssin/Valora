@@ -573,7 +573,7 @@ function ProductInfoModal({ product, explanation, isOpen, onClose, onAddToCart, 
     )
 }
 
-export default function SearchResults({ result }) {
+export default function SearchResults({ result, onTrackClick, onAddToCart, budget }) {
     const { setLastMetrics } = useStore()
 
     // Store metrics
@@ -586,6 +586,13 @@ export default function SearchResults({ result }) {
 
     const path = result.path
     const metrics = result.metrics || {}
+
+    // Handler to track clicks for Success Indicators
+    const handleProductClick = (product, index) => {
+        if (onTrackClick) {
+            onTrackClick(product.product_id, index, product.price, budget)
+        }
+    }
 
     return (
         <div className="space-y-6">
@@ -620,9 +627,9 @@ export default function SearchResults({ result }) {
             </motion.div>
 
             {/* Results based on path */}
-            {path === 'fast' && <FastPathResults results={result.results} />}
-            {path === 'smart' && <SmartPathResults results={result.results} metrics={metrics} disambiguation={result.disambiguation} />}
-            {path === 'visual' && <VisualPathResults results={result.results} metrics={metrics} />}
+            {path === 'fast' && <FastPathResults results={result.results} onProductClick={handleProductClick} onAddToCart={onAddToCart} />}
+            {path === 'smart' && <SmartPathResults results={result.results} metrics={metrics} disambiguation={result.disambiguation} onProductClick={handleProductClick} onAddToCart={onAddToCart} />}
+            {path === 'visual' && <VisualPathResults results={result.results} metrics={metrics} onProductClick={handleProductClick} onAddToCart={onAddToCart} />}
             {path === 'deep' && (
                 // Deep path: Show bundle builder if bundle/curated_products available, otherwise fallback to grid
                 (result.bundle || result.curated_products) ? (
@@ -632,10 +639,12 @@ export default function SearchResults({ result }) {
                         agentPaths={result.agent_paths}
                         explanations={result.explanations}
                         bundleExplanation={result.bundle_explanation}
+                        onProductClick={handleProductClick}
+                        onAddToCart={onAddToCart}
                     />
                 ) : (
                     // Timeout fallback: show results as smart path grid
-                    <SmartPathResults results={result.results} metrics={metrics} />
+                    <SmartPathResults results={result.results} metrics={metrics} onProductClick={handleProductClick} onAddToCart={onAddToCart} />
                 )
             )}
         </div>
@@ -665,19 +674,19 @@ function PathBadge({ path }) {
     )
 }
 
-function FastPathResults({ results = [] }) {
+function FastPathResults({ results = [], onProductClick, onAddToCart }) {
     return (
         <div>
             <h2 className="flex items-center gap-2 text-xl font-semibold mb-4">
                 <Zap className="w-5 h-5 text-green-400" />
                 Quick Results
             </h2>
-            <ProductGrid products={results} />
+            <ProductGrid products={results} onProductClick={onProductClick} onAddToCart={onAddToCart} />
         </div>
     )
 }
 
-function SmartPathResults({ results = [], metrics = {}, disambiguation = null }) {
+function SmartPathResults({ results = [], metrics = {}, disambiguation = null, onProductClick, onAddToCart }) {
     // Separate primary and related matches
     const primaryResults = results.filter(p => p.match_tier === 'primary')
     const relatedResults = results.filter(p => p.match_tier !== 'primary')
@@ -735,7 +744,7 @@ function SmartPathResults({ results = [], metrics = {}, disambiguation = null })
                         <Sparkles className="w-4 h-4" />
                         Best Matches
                     </h3>
-                    <ProductGrid products={primaryResults} showScoring={true} tier="primary" />
+                    <ProductGrid products={primaryResults} showScoring={true} tier="primary" onProductClick={onProductClick} onAddToCart={onAddToCart} />
                 </div>
             )}
             
@@ -748,19 +757,19 @@ function SmartPathResults({ results = [], metrics = {}, disambiguation = null })
                             Related Products
                         </h3>
                     )}
-                    <ProductGrid products={relatedResults} showScoring={true} tier="related" />
+                    <ProductGrid products={relatedResults} showScoring={true} tier="related" onProductClick={onProductClick} onAddToCart={onAddToCart} />
                 </div>
             )}
             
             {/* Fallback if no tier separation */}
             {primaryResults.length === 0 && relatedResults.length === 0 && (
-                <ProductGrid products={results} showScoring={true} />
+                <ProductGrid products={results} showScoring={true} onProductClick={onProductClick} onAddToCart={onAddToCart} />
             )}
         </div>
     )
 }
 
-function VisualPathResults({ results = [], metrics = {} }) {
+function VisualPathResults({ results = [], metrics = {}, onProductClick, onAddToCart }) {
     return (
         <div>
             <h2 className="flex items-center gap-2 text-xl font-semibold mb-4">
@@ -775,14 +784,15 @@ function VisualPathResults({ results = [], metrics = {} }) {
             <p className="text-white/60 text-sm mb-4">
                 Found {metrics.candidates_searched || results.length} similar products based on your image
             </p>
-            <ProductGrid products={results} showScoring={true} />
+            <ProductGrid products={results} showScoring={true} onProductClick={onProductClick} onAddToCart={onAddToCart} />
         </div>
     )
 }
 
-function DeepPathResults({ bundle, curatedProducts, agentPaths, explanations, bundleExplanation }) {
+function DeepPathResults({ bundle, curatedProducts, agentPaths, explanations, bundleExplanation, onProductClick, onAddToCart: externalAddToCart }) {
     const bundleItems = bundle?.bundle || []
-    const { addToCart, cart } = useStore()
+    const { addToCart: storeAddToCart, cart } = useStore()
+    const addToCart = externalAddToCart || storeAddToCart
     const [addedItems, setAddedItems] = useState(new Set())
     const [selectedItems, setSelectedItems] = useState({}) // category -> selected item id
     const [modalProduct, setModalProduct] = useState(null) // Product for info modal
@@ -1300,14 +1310,16 @@ function BundleProductCard({ item, explanation, onAdd, isAdded, isRecommended, i
     )
 }
 
-function ProductGrid({ products = [], showScoring = false, tier = null }) {
-    const { addToCart, cart } = useStore()
+function ProductGrid({ products = [], showScoring = false, tier = null, onProductClick, onAddToCart: externalAddToCart }) {
+    const { addToCart: storeAddToCart, cart } = useStore()
     const [modalProduct, setModalProduct] = useState(null)
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [addedItems, setAddedItems] = useState(new Set())
 
     const handleAddToCart = (product) => {
-        addToCart({ product_id: product.product_id || product.id, ...product })
+        // Use external addToCart if provided (for analytics tracking), otherwise use store
+        const addFn = externalAddToCart || storeAddToCart
+        addFn({ product_id: product.product_id || product.id, ...product })
         setAddedItems(prev => new Set([...prev, product.product_id || product.id]))
     }
     
@@ -1352,6 +1364,10 @@ function ProductGrid({ products = [], showScoring = false, tier = null }) {
                             transition={{ delay: i * 0.03 }}
                             className={`group glass p-4 card-hover relative border ${cardClass} cursor-pointer`}
                             onClick={() => {
+                                // Track click for Success Indicators
+                                if (onProductClick) {
+                                    onProductClick(product, i)
+                                }
                                 setModalProduct(product)
                                 setIsModalOpen(true)
                             }}

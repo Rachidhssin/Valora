@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 # Core imports
 from core.afig import AFIG
-from core.router import QueryRouter
+from core.hybrid_router import HybridQueryRouter
 from core.embeddings import EmbeddingService
 from core.taxonomy import disambiguate_search, CategoryTaxonomy
 from db.products import get_popular_products_by_category
@@ -36,7 +36,14 @@ class FinBundleEngine:
     """
     
     def __init__(self):
-        self.router = QueryRouter()
+        # Use HybridQueryRouter with the trained LSTM model
+        import os
+        model_path = os.path.join(os.path.dirname(__file__), '..', 'models', 'router_lstm')
+        if os.path.exists(model_path):
+            self.router = HybridQueryRouter(model_path=model_path)
+        else:
+            self.router = HybridQueryRouter()  # Rules only
+        
         self.embedder = EmbeddingService()
         self.qdrant = QdrantSearch()
         self.cache = PostgreSQLCache(table_name="search_cache")

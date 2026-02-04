@@ -2,12 +2,16 @@
 Analytics Routes
 ================
 API endpoints for tracking success indicators.
+Uses absolute paths for consistent data storage across all entry points.
 """
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 
-from core.success_indicators import get_indicators
+from core.success_indicators import get_indicators, reset_indicators
+
+# Reset singleton on module reload to pick up path changes
+reset_indicators()
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 

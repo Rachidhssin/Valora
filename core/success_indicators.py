@@ -100,8 +100,13 @@ class SuccessIndicators:
     - Time to Cart: average time from search to cart add
     """
     
-    def __init__(self, data_dir: str = "data"):
-        self.data_dir = Path(data_dir)
+    def __init__(self, data_dir: str = None):
+        # Use absolute path relative to project root to ensure consistency
+        if data_dir is None:
+            project_root = Path(__file__).parent.parent
+            self.data_dir = project_root / "data"
+        else:
+            self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
         
         # Event log files
@@ -632,6 +637,12 @@ def get_indicators() -> SuccessIndicators:
     if _indicators_instance is None:
         _indicators_instance = SuccessIndicators()
     return _indicators_instance
+
+
+def reset_indicators():
+    """Reset the singleton instance (for testing/reload purposes)."""
+    global _indicators_instance
+    _indicators_instance = None
 
 
 def generate_session_id() -> str:
