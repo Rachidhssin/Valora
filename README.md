@@ -345,6 +345,7 @@ React 18          Component-based UI with hooks
 - **Node.js 18+** — [nodejs.org](https://nodejs.org)  
 - **Docker** (optional) — For local Qdrant
 - **PostgreSQL 14+** (optional) — For caching
+- **Data** [amazon_data](https://amazon-reviews-2023.github.io), [electronics_meta_download](https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Electronics.jsonl.gz)
 
 ### Installation
 
