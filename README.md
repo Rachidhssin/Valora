@@ -579,49 +579,6 @@ Optimizer   <200ms     89ms      145ms      178ms
 | Vector search latency | ~10ms (Qdrant Cloud) |
 | Bundle optimization | <150ms for 15 products |
 
-### Resource Usage
-
-```
-Component           Memory      CPU (idle)    CPU (load)
-─────────────────────────────────────────────────────────
-FastAPI Server      ~200MB      <1%           15-25%
-CLIP Model          ~1.5GB      <1%           50-80%
-S-BERT Model        ~400MB      <1%           20-40%
-─────────────────────────────────────────────────────────
-Total (GPU)         ~2.5GB      —             —
-Total (CPU-only)    ~2.5GB      —             Higher
-```
-
----
-
-## 🗺️ Roadmap
-
-```mermaid
-timeline
-    title Valora Evolution
-    
-    section Launched ✅
-        Q1 2026 : Semantic Search : Budget Optimization : React Frontend
-    
-    section Current 🔄
-        Q2 2026 : Visual Search : CLIP Integration : Hybrid Fusion
-    
-    section Planned 📋
-        Q3 2026 : LLM Explanations : ReAct Agent : User Profiles
-        Q4 2026 : Kubernetes : A/B Testing : Multi-language
-```
-
-### Upcoming Features
-
-- [ ] 🖼️ **Drag-and-Drop Image Upload** — Visual search in frontend
-- [ ] 📡 **WebSocket Analytics** — Real-time dashboard updates
-- [ ] 🌐 **Multi-language** — Multilingual CLIP embeddings
-- [ ] 💾 **Persistent Profiles** — User preference storage
-- [ ] 🧪 **A/B Framework** — Built-in experimentation
-- [ ] ☸️ **Helm Charts** — Kubernetes deployment
-
----
-
 ## 🤝 Contributing
 
 We welcome contributions! Here's how to get started:
